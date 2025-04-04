@@ -2,6 +2,7 @@ from datetime import datetime
 from main import db
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
+from flask_login import UserMixin
 
 class EmailSession(db.Model):
     """Represents a fetching session with its results."""
@@ -49,3 +50,17 @@ class Email(db.Model):
             'error': self.error,
             'message': self.error_message if self.error else None
         }
+
+
+class User(UserMixin, db.Model):
+    """User model for authentication."""
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True)
+    username = Column(String(64), nullable=False)
+    email = Column(String(120), unique=True, nullable=False)
+    profile_pic = Column(String(255))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<User(id={self.id}, email={self.email})>"
