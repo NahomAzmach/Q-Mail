@@ -252,8 +252,18 @@ def get_credentials_from_session():
         scopes=creds_data['scopes']
     )
 
-def fetch_gmail_messages(max_results=50):
-    """Fetch the user's Gmail messages using stored credentials."""
+def fetch_gmail_messages(max_results=50, offset=0, folder='INBOX'):
+    """
+    Fetch the user's Gmail messages using stored credentials.
+    
+    Args:
+        max_results: Maximum number of emails to fetch
+        offset: Number of emails to skip (for pagination)
+        folder: Gmail label/folder to fetch from (INBOX, SPAM, TRASH, etc.)
+        
+    Returns:
+        Tuple of (emails_data, error_message)
+    """
     credentials = get_credentials_from_session()
     if not credentials:
         return None, "Not authenticated with Google"
@@ -262,17 +272,49 @@ def fetch_gmail_messages(max_results=50):
         # Build the Gmail API service
         service = build('gmail', 'v1', credentials=credentials)
         
-        # Get a list of messages
-        results = service.users().messages().list(userId='me', maxResults=max_results).execute()
+        # Convert folder names to Gmail labels
+        label_mapping = {
+            'INBOX': 'INBOX',
+            'SPAM': 'SPAM',
+            'JUNK': 'SPAM',  # Alias for SPAM
+            'TRASH': 'TRASH',
+            'DRAFTS': 'DRAFT',
+            'SENT': 'SENT',
+            'IMPORTANT': 'IMPORTANT',
+            'STARRED': 'STARRED',
+            'UNREAD': 'UNREAD',
+            'CATEGORY_PERSONAL': 'CATEGORY_PERSONAL',
+            'CATEGORY_SOCIAL': 'CATEGORY_SOCIAL',
+            'CATEGORY_PROMOTIONS': 'CATEGORY_PROMOTIONS',
+            'CATEGORY_UPDATES': 'CATEGORY_UPDATES',
+            'CATEGORY_FORUMS': 'CATEGORY_FORUMS',
+        }
+        
+        gmail_label = label_mapping.get(folder.upper(), 'INBOX')
+        
+        # Get a list of messages with optional label filter
+        query = f'label:{gmail_label}' if gmail_label != 'INBOX' else None
+        
+        # Get list of message IDs
+        results = service.users().messages().list(
+            userId='me', 
+            maxResults=max_results,
+            q=query,
+            pageToken=None if offset == 0 else f"p{offset}"  # Simplistic pagination
+        ).execute()
+        
         messages = results.get('messages', [])
         
         if not messages:
-            return [], "No messages found"
+            return [], f"No messages found in {folder}"
         
         # Fetch details for each message
         emails = []
         for message in messages:
             msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
+            
+            # Get labels for the message
+            labels = msg.get('labelIds', [])
             
             # Extract email details
             headers = msg['payload']['headers']
@@ -301,6 +343,25 @@ def fetch_gmail_messages(max_results=50):
                 if data:
                     body += base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
             
+            # Determine folder/category based on labels
+            message_folder = 'INBOX'
+            if 'SPAM' in labels:
+                message_folder = 'SPAM'
+            elif 'TRASH' in labels:
+                message_folder = 'TRASH'
+            elif 'DRAFT' in labels:
+                message_folder = 'DRAFTS'
+            elif 'SENT' in labels:
+                message_folder = 'SENT'
+            elif 'CATEGORY_PROMOTIONS' in labels:
+                message_folder = 'PROMOTIONS'
+            elif 'CATEGORY_SOCIAL' in labels:
+                message_folder = 'SOCIAL'
+            elif 'CATEGORY_FORUMS' in labels:
+                message_folder = 'FORUMS'
+            elif 'CATEGORY_UPDATES' in labels:
+                message_folder = 'UPDATES'
+            
             # Add the email to the list
             emails.append({
                 'id': msg['id'],
@@ -308,6 +369,11 @@ def fetch_gmail_messages(max_results=50):
                 'from': sender,
                 'date': date,
                 'body': body,
+                'folder': message_folder,
+                'labels': labels,
+                'unread': 'UNREAD' in labels,
+                'important': 'IMPORTANT' in labels,
+                'starred': 'STARRED' in labels,
             })
         
         return emails, None

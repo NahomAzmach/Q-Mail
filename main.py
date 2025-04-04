@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from flask import Flask, render_template, request, session, flash, redirect, url_for
 import os
+import json
 import logging
 from email_security import batch_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
@@ -101,12 +102,15 @@ def fetch_google_emails():
         flash('Not authenticated with Google. Please log in.', 'warning')
         return redirect(url_for('index'))
     
-    # Set max emails
-    max_emails = request.args.get('max_emails', default=50, type=int)
+    # Set parameters from request
+    max_emails = request.args.get('max_emails', default=15, type=int)
+    offset = request.args.get('offset', default=0, type=int)
+    folder = request.args.get('folder', default='INBOX', type=str)
+    append = request.args.get('append', default='false', type=str).lower() == 'true'
     
     try:
         # Fetch emails using Gmail API
-        emails_data, error = fetch_gmail_messages(max_results=max_emails)
+        emails_data, error = fetch_gmail_messages(max_results=max_emails, offset=offset, folder=folder)
         
         if error:
             # Specific handling for the Gmail API not enabled error
@@ -125,16 +129,33 @@ def fetch_google_emails():
                 return redirect(url_for('index'))
         
         if not emails_data:
-            flash("No emails found", 'warning')
+            flash(f"No emails found in {folder}", 'warning')
+            if append:
+                # If appending, just return to results
+                return redirect(url_for('results'))
             return redirect(url_for('index'))
         
-        # Create a new email session in the database
-        email_session = EmailSession(
-            email_address=session.get('user_email', 'Unknown Gmail user'),
-            provider='gmail-oauth'
-        )
-        db.session.add(email_session)
-        db.session.flush()  # Generate ID for session
+        # Create a new email session or use existing one if appending
+        if append and 'email_session_id' in session:
+            email_session = EmailSession.query.get(session['email_session_id'])
+            if not email_session:
+                # If session was deleted, create a new one
+                email_session = EmailSession(
+                    email_address=session.get('user_email', 'Unknown Gmail user'),
+                    provider='gmail-oauth'
+                )
+                db.session.add(email_session)
+                db.session.flush()  # Generate ID for session
+                session['email_session_id'] = email_session.id
+        else:
+            # Create new session
+            email_session = EmailSession(
+                email_address=session.get('user_email', 'Unknown Gmail user'),
+                provider='gmail-oauth'
+            )
+            db.session.add(email_session)
+            db.session.flush()  # Generate ID for session
+            session['email_session_id'] = email_session.id
         
         # Store each email in the database
         for email_data in emails_data:
@@ -144,7 +165,14 @@ def fetch_google_emails():
                 sender=email_data.get('from', ''),
                 date=email_data.get('date', ''),
                 body=email_data.get('body', ''),
-                error=False
+                error=False,
+                email_metadata=json.dumps({
+                    'folder': email_data.get('folder', 'INBOX'),
+                    'labels': email_data.get('labels', []),
+                    'unread': email_data.get('unread', False),
+                    'important': email_data.get('important', False),
+                    'starred': email_data.get('starred', False),
+                })
             )
             db.session.add(email)
         
@@ -153,6 +181,8 @@ def fetch_google_emails():
         
         # Store only the session ID in the session cookie
         session['email_session_id'] = email_session.id
+        session['last_offset'] = offset + len(emails_data)
+        session['current_folder'] = folder
         
         return redirect(url_for('results'))
         

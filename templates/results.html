@@ -108,6 +108,24 @@
                                                         <div class="email-meta">
                                                             <small>From: {{ email.from }}</small>
                                                             <small class="ms-2">{{ email.date }}</small>
+                                                            {% if email.folder %}
+                                                                {% set folder_class = 'bg-secondary' %}
+                                                                {% if email.folder == 'INBOX' %}
+                                                                    {% set folder_class = 'bg-primary' %}
+                                                                {% elif email.folder == 'SPAM' or email.folder == 'JUNK' %}
+                                                                    {% set folder_class = 'bg-warning text-dark' %}
+                                                                {% elif email.folder == 'PROMOTIONS' %}
+                                                                    {% set folder_class = 'bg-info text-dark' %}
+                                                                {% elif email.folder == 'UPDATES' %}
+                                                                    {% set folder_class = 'bg-success' %}
+                                                                {% elif email.folder == 'SOCIAL' %}
+                                                                    {% set folder_class = 'bg-info' %}
+                                                                {% endif %}
+                                                                <small class="ms-2 badge {{ folder_class }}">{{ email.folder }}</small>
+                                                            {% endif %}
+                                                            {% if email.unread %}
+                                                                <small class="ms-1 badge bg-danger">Unread</small>
+                                                            {% endif %}
                                                         </div>
                                                     </div>
                                                     {% if email.security_analysis %}
@@ -158,6 +176,32 @@
                                                                 <span class="me-2">Risk Level:</span>
                                                                 <span class="badge bg-{{ badge_color }}">{{ email.security_analysis.risk_level }}</span>
                                                             </div>
+                                                            
+                                                            <div class="d-flex align-items-center mb-2">
+                                                                <span class="me-2">QMail Trust Score:</span>
+                                                                <div class="d-flex align-items-center">
+                                                                    <span class="me-2 fs-4">{{ email.security_analysis.qmail_score.flag }}</span>
+                                                                    <div>
+                                                                        <span class="badge bg-dark">{{ email.security_analysis.qmail_score.score }}/10</span>
+                                                                        <span class="ms-2">{{ email.security_analysis.qmail_score.label }}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div class="alert alert-secondary mb-2">
+                                                                <small>{{ email.security_analysis.qmail_score.description }}</small>
+                                                            </div>
+                                                            
+                                                            {% if email.security_analysis.qmail_score.deductions %}
+                                                            <div class="mb-2">
+                                                                <strong>Score Deductions:</strong>
+                                                                <ul class="mt-1 mb-0">
+                                                                    {% for deduction in email.security_analysis.qmail_score.deductions %}
+                                                                    <li><small>{{ deduction }}</small></li>
+                                                                    {% endfor %}
+                                                                </ul>
+                                                            </div>
+                                                            {% endif %}
                                                             
                                                             <div class="mb-2">
                                                                 <p class="mb-1">Sender Domain: <code>{{ email.security_analysis.sender_domain }}</code></p>
