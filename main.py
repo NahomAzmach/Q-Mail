@@ -3,6 +3,7 @@ from flask import Flask, render_template, request, session, flash, redirect, url
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
+from email_security import batch_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
 from sqlalchemy.orm import DeclarativeBase
@@ -147,13 +148,17 @@ def results():
         session.pop('email_session_id', None)
         return redirect(url_for('index'))
     
+    # Get email data and perform security analysis
+    email_list = [email.to_dict() for email in email_session.emails]
+    analyzed_emails = batch_analyze_emails(email_list)
+    
     # Format the results to match the template expectations
     results = {
         'email_address': email_session.email_address,
         'imap_server': 'Stored in database',
         'folder': 'INBOX',
         'count': len(email_session.emails),
-        'emails': [email.to_dict() for email in email_session.emails]
+        'emails': analyzed_emails
     }
     
     return render_template('results.html', results=results)
