@@ -62,7 +62,17 @@ def callback():
     # Check if there was an error in the callback
     error = request.args.get('error')
     if error:
-        flash(f"Authorization failed: {error}", "danger")
+        if error == "redirect_uri_mismatch":
+            # Print more detailed debugging information for redirect URI mismatch
+            global REDIRECT_URI
+            current_uri = request.base_url
+            print(f"Error: Redirect URI mismatch")
+            print(f"Expected URI in Google Console: {REDIRECT_URI}")
+            print(f"Actual request URI: {current_uri}")
+            
+            flash("Authorization failed: The redirect URI doesn't match what's configured in Google Cloud Console. Please check the console output for details.", "danger")
+        else:
+            flash(f"Authorization failed: {error}", "danger")
         return redirect(url_for("index"))
     
     # Get the authorization code from the callback
@@ -77,7 +87,18 @@ def callback():
     try:
         # Exchange the authorization code for credentials
         flow = get_oauth_flow()
-        flow.fetch_token(authorization_response=request.url)
+        
+        # Print debug info
+        print(f"Authorization response URL: {request.url}")
+        print(f"Configured redirect URI: {REDIRECT_URI}")
+        
+        # Fix the URL if it's http instead of https
+        auth_response = request.url
+        if auth_response.startswith('http:') and REDIRECT_URI.startswith('https:'):
+            auth_response = 'https:' + auth_response[5:]
+            print(f"Fixed auth response URL to: {auth_response}")
+        
+        flow.fetch_token(authorization_response=auth_response)
         
         # Get the credentials from the flow
         credentials = flow.credentials
@@ -130,7 +151,10 @@ def get_oauth_flow():
     global REDIRECT_URI
     if not REDIRECT_URI:
         if os.environ.get("REPLIT_DOMAIN"):
-            REDIRECT_URI = f"https://{os.environ.get('REPLIT_DOMAIN')}/google_login/callback"
+            # Use the exact domain from environment
+            replit_domain = os.environ.get('REPLIT_DOMAIN')
+            REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
+            print(f"Using redirect URI: {REDIRECT_URI}")
         else:
             REDIRECT_URI = "http://localhost:5000/google_login/callback"
     
