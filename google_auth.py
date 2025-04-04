@@ -31,13 +31,30 @@ def google_login():
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
     client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
     
+    # Debug environment info
+    replit_domain = os.environ.get('REPLIT_DOMAINS')
+    if replit_domain:
+        if ',' in replit_domain:
+            domain_for_uri = replit_domain.split(',')[0].strip()
+        else:
+            domain_for_uri = replit_domain
+        print(f"DEBUG - Detected Replit domain: {domain_for_uri}")
+    else:
+        print("DEBUG - No Replit domain found in environment variables")
+    
     if not client_id or not client_secret:
         flash("Google OAuth credentials are not configured. Please add GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET to the environment variables.", "danger")
         return redirect(url_for("index"))
         
     # Set up the OAuth flow with the client secrets
     try:
+        # This will initialize REDIRECT_URI global variable
         flow = get_oauth_flow()
+        
+        # Print the exact redirect URI that will be used
+        global REDIRECT_URI
+        print(f"DEBUG - login_route - Using Redirect URI: {REDIRECT_URI}")
+        print(f"DEBUG - login_route - Make sure this URI is EXACTLY registered in Google Cloud Console")
         
         # Generate the authorization URL with the required scopes
         authorization_url, state = flow.authorization_url(
@@ -45,6 +62,8 @@ def google_login():
             include_granted_scopes='true',
             prompt='consent'
         )
+        
+        print(f"DEBUG - Authorization URL: {authorization_url}")
         
         # Store the state in the session for later validation
         session['state'] = state
@@ -54,6 +73,7 @@ def google_login():
     
     except Exception as e:
         flash(f"Error starting Google login: {str(e)}", "danger")
+        print(f"DEBUG - Error in google_login: {str(e)}")
         return redirect(url_for("index"))
 
 @google_auth.route("/google_login/callback")
@@ -94,9 +114,12 @@ def callback():
         
         # Fix the URL if it's http instead of https
         auth_response = request.url
-        if auth_response.startswith('http:') and REDIRECT_URI.startswith('https:'):
-            auth_response = 'https:' + auth_response[5:]
-            print(f"Fixed auth response URL to: {auth_response}")
+        if auth_response and REDIRECT_URI:
+            if auth_response.startswith('http:') and REDIRECT_URI.startswith('https:'):
+                auth_response = 'https:' + auth_response[5:]
+                print(f"Fixed auth response URL to: {auth_response}")
+        else:
+            print("Warning: auth_response or REDIRECT_URI is None")
         
         flow.fetch_token(authorization_response=auth_response)
         
@@ -150,13 +173,20 @@ def get_oauth_flow():
     # Determine the redirect URI based on the environment
     global REDIRECT_URI
     if not REDIRECT_URI:
-        if os.environ.get("REPLIT_DOMAIN"):
+        replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
+        if replit_domain:
             # Use the exact domain from environment
-            replit_domain = os.environ.get('REPLIT_DOMAIN')
+            # If it contains multiple domains (comma-separated), take the first one
+            if ',' in replit_domain:
+                replit_domain = replit_domain.split(',')[0].strip()
+            
             REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
-            print(f"Using redirect URI: {REDIRECT_URI}")
+            print(f"DEBUG - Using redirect URI: {REDIRECT_URI}")
+            print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
         else:
+            # Fallback to localhost
             REDIRECT_URI = "http://localhost:5000/google_login/callback"
+            print("DEBUG - No Replit domain found, using localhost redirect URI")
     
     # Get client ID and client secret from environment variables
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
