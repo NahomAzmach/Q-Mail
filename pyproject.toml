@@ -16,4 +16,5 @@ dependencies = [
     "google-auth-oauthlib>=1.2.1",
     "google-api-python-client>=2.166.0",
     "requests>=2.32.3",
+    "openai>=1.70.0",
 ]
