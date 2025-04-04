@@ -176,8 +176,20 @@ def fetch_google_emails():
         emails_data, error = fetch_gmail_messages(max_results=max_emails)
         
         if error:
-            flash(f"Error fetching emails: {error}", 'danger')
-            return redirect(url_for('index'))
+            # Specific handling for the Gmail API not enabled error
+            if "Gmail API has not been used in project" in error or "accessNotConfigured" in error:
+                flash("The Gmail API needs to be enabled in your Google Cloud Console project. "
+                      "Please visit your Google Cloud Console, go to 'APIs & Services' > 'Library', "
+                      "search for 'Gmail API', and click 'Enable'.", 'warning')
+                
+                # Return a special template with instructions on how to enable Gmail API
+                return render_template('gmail_setup.html', 
+                                      user_email=session.get('user_email'),
+                                      error_details=error)
+            else:
+                # Handle other errors
+                flash(f"Error fetching emails: {error}", 'danger')
+                return redirect(url_for('index'))
         
         if not emails_data:
             flash("No emails found", 'warning')

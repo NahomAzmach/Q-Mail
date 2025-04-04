@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Gmail API Setup Required{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+  <div class="row">
+    <div class="col-md-10 offset-md-1">
+      <div class="card border-warning">
+        <div class="card-header bg-warning text-white">
+          <h4>Gmail API Setup Required</h4>
+        </div>
+        <div class="card-body">
+          <h5 class="card-title">You're logged in as: {{ user_email }}</h5>
+          <div class="alert alert-info">
+            <strong>Almost there!</strong> The Google OAuth login is working correctly, but we need one more step to access your Gmail.
+          </div>
+          
+          <h5 class="mb-3">Follow these steps to enable the Gmail API:</h5>
+          <ol class="list-group list-group-numbered mb-4">
+            <li class="list-group-item">Go to the <a href="https://console.cloud.google.com/apis/library" target="_blank">Google Cloud Console API Library</a></li>
+            <li class="list-group-item">Make sure you're in the same project where you created your OAuth credentials</li>
+            <li class="list-group-item">Search for "Gmail API"</li>
+            <li class="list-group-item">Click on "Gmail API" in the results</li>
+            <li class="list-group-item">Click the "Enable" button</li>
+            <li class="list-group-item">Wait a few minutes for the changes to propagate</li>
+            <li class="list-group-item">Return to this application and try again</li>
+          </ol>
+
+          <p>Once you've enabled the Gmail API, you can <a href="{{ url_for('fetch_google_emails') }}" class="btn btn-primary">Try Again</a></p>
+          
+          <div class="mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Back to Home</a>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Logout</a>
+          </div>
+        </div>
+        
+        {% if error_details %}
+        <div class="card-footer">
+          <p><strong>Technical Details:</strong></p>
+          <div class="alert alert-secondary">
+            <small class="text-muted">{{ error_details }}</small>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
