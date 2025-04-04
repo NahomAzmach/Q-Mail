@@ -252,7 +252,7 @@ def get_credentials_from_session():
         scopes=creds_data['scopes']
     )
 
-def fetch_gmail_messages(max_results=10):
+def fetch_gmail_messages(max_results=50):
     """Fetch the user's Gmail messages using stored credentials."""
     credentials = get_credentials_from_session()
     if not credentials:

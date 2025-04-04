@@ -2,7 +2,6 @@
 from flask import Flask, render_template, request, session, flash, redirect, url_for
 import os
 import logging
-from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
 from email_security import batch_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
@@ -52,83 +51,13 @@ app.register_blueprint(google_auth)
 
 @app.route('/', methods=['GET'])
 def index():
-    """Home page with email fetcher form."""
+    """Home page to redirect to Google login."""
+    if current_user.is_authenticated and 'credentials' in session:
+        # Already logged in and has credentials, redirect to fetch emails
+        return redirect(url_for('fetch_google_emails'))
+    
+    # Otherwise, show the home page with Google login button
     return render_template('index.html')
-
-@app.route('/fetch', methods=['POST'])
-def fetch():
-    """Process the form and fetch emails."""
-    email_address = request.form.get('email')
-    password = request.form.get('password')
-    imap_server = request.form.get('imap_server')
-    provider = request.form.get('provider')
-    max_emails = int(request.form.get('max_emails', 10))
-    folder = request.form.get('folder', 'INBOX')
-    
-    # Validate inputs
-    if not email_address or not password:
-        flash('Email and password are required.', 'danger')
-        return redirect(url_for('index'))
-    
-    # If IMAP server not provided, try to get it from the provider or auto-detect
-    if not imap_server:
-        if provider and provider != 'auto':
-            imap_server = get_imap_server(provider)
-        else:
-            imap_server = auto_detect_provider(email_address)
-            
-        if not imap_server:
-            flash('Could not determine IMAP server. Please specify it manually.', 'danger')
-            return redirect(url_for('index'))
-    
-    # Fetch emails
-    try:
-        emails_data = fetch_emails(
-            email_address=email_address,
-            password=password,
-            imap_server=imap_server,
-            max_emails=max_emails,
-            folder=folder
-        )
-        
-        # Check for errors
-        if emails_data and 'error' in emails_data[0]:
-            flash(f"Error fetching emails: {emails_data[0]['message']}", 'danger')
-            return redirect(url_for('index'))
-        
-        # Create a new email session in the database
-        email_session = EmailSession(
-            email_address=email_address,
-            provider=provider or 'auto-detected'
-        )
-        db.session.add(email_session)
-        db.session.flush()  # Generate ID for session
-        
-        # Store each email in the database
-        for email_data in emails_data:
-            email = Email(
-                session_id=email_session.id,
-                subject=email_data.get('subject', ''),
-                sender=email_data.get('from', ''),
-                date=email_data.get('date', ''),
-                body=email_data.get('body', ''),
-                error='error' in email_data,
-                error_message=email_data.get('message', '') if 'error' in email_data else None
-            )
-            db.session.add(email)
-        
-        # Commit all changes to database
-        db.session.commit()
-        
-        # Store only the session ID in the session cookie
-        session['email_session_id'] = email_session.id
-        
-        return redirect(url_for('results'))
-        
-    except Exception as e:
-        logger.error(f"Error in fetch_emails: {str(e)}")
-        flash(f"An error occurred: {str(e)}", 'danger')
-        return redirect(url_for('index'))
 
 @app.route('/results', methods=['GET'])
 def results():
@@ -155,8 +84,7 @@ def results():
     # Format the results to match the template expectations
     results = {
         'email_address': email_session.email_address,
-        'imap_server': 'Stored in database',
-        'folder': 'INBOX',
+        'provider': 'Gmail (OAuth)',
         'count': len(email_session.emails),
         'emails': analyzed_emails
     }
@@ -174,7 +102,7 @@ def fetch_google_emails():
         return redirect(url_for('index'))
     
     # Set max emails
-    max_emails = request.args.get('max_emails', default=10, type=int)
+    max_emails = request.args.get('max_emails', default=50, type=int)
     
     try:
         # Fetch emails using Gmail API

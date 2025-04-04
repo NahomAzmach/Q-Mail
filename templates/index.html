@@ -3,21 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email Fetcher</title>
+    <title>Email Security Analyzer</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .hero-section {
+            text-align: center;
+            padding: 2rem 0;
+        }
+        .features-list {
+            margin-top: 2rem;
+        }
+        .feature-item {
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: flex-start;
+        }
+        .feature-icon {
+            font-size: 1.5rem;
+            min-width: 40px;
+            text-align: center;
+        }
+        .security-badge {
+            display: inline-block;
+            margin-right: 0.5rem;
+            font-size: 1.5rem;
+        }
+        .login-card {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+    </style>
 </head>
 <body>
     <div class="container py-4">
         <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card mb-4">
+            <div class="col-md-10">
+                <div class="hero-section mb-4">
+                    <h1 class="display-5 fw-bold mb-3">Email Security Analyzer</h1>
+                    <p class="lead">Analyze your emails for security threats with advanced QMail Trust Score technology</p>
+                </div>
+
+                <div class="row mb-5">
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <div class="security-badge">✅</div>
+                                <h5 class="card-title">Security Ratings</h5>
+                                <p class="card-text">Get instant security ratings for every email with our QMail Trust Score system</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <div class="security-badge">🔍</div>
+                                <h5 class="card-title">Threat Detection</h5>
+                                <p class="card-text">Identify potentially malicious emails with domain analysis and phishing detection</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <div class="security-badge">🛡️</div>
+                                <h5 class="card-title">Secure Access</h5>
+                                <p class="card-text">Access your emails securely using Google OAuth - no passwords required</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card login-card mb-4">
                     <div class="card-header">
-                        <h1 class="h3 mb-0">Email Fetcher</h1>
+                        <h2 class="h4 mb-0">Get Started</h2>
                     </div>
                     <div class="card-body">
-                        <p class="card-text">This tool allows you to securely fetch emails from your inbox using IMAP or OAuth.</p>
-                        
                         {% with messages = get_flashed_messages(with_categories=true) %}
                             {% if messages %}
                                 {% for category, message in messages %}
@@ -26,147 +87,63 @@
                             {% endif %}
                         {% endwith %}
                         
-                        <!-- Google Sign-in Button -->
-                        <div class="mb-4 text-center">
-                            <p class="mb-3"><strong>Option 1:</strong> Sign in with Google (recommended)</p>
-                            <a href="{{ url_for('google_auth.google_login') }}" class="btn btn-primary btn-lg mb-2">
+                        <div class="text-center py-3">
+                            <p class="mb-3">Sign in with your Google account to analyze emails:</p>
+                            <a href="{{ url_for('google_auth.google_login') }}" class="btn btn-primary btn-lg">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-google me-2" viewBox="0 0 16 16">
                                     <path d="M15.545 6.558a9.42 9.42 0 0 1 .139 1.626c0 2.434-.87 4.492-2.384 5.885h.002C11.978 15.292 10.158 16 8 16A8 8 0 1 1 8 0a7.689 7.689 0 0 1 5.352 2.082l-2.284 2.284A4.347 4.347 0 0 0 8 3.166c-2.087 0-3.86 1.408-4.492 3.304a4.792 4.792 0 0 0 0 3.063h.003c.635 1.893 2.405 3.301 4.492 3.301 1.078 0 2.004-.276 2.722-.764h-.003a3.702 3.702 0 0 0 1.599-2.431H8v-3.08h7.545z"/>
                                 </svg>
                                 Sign in with Google
                             </a>
-                            <p class="text-muted small">No password required. Secure OAuth authentication.</p>
+                            <p class="text-muted small mt-2">Secure OAuth authentication - your password is never shared with us</p>
                         </div>
-                        
-                        <hr class="my-4">
-                        <p class="text-center mb-3"><strong>Option 2:</strong> Manual IMAP Connection</p>
-                        
-                        <form action="{{ url_for('fetch') }}" method="POST">
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email Address</label>
-                                <input type="email" class="form-control" id="email" name="email" required>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="password" class="form-label">Password or App Password</label>
-                                <input type="password" class="form-control" id="password" name="password" required>
-                                <div class="form-text">
-                                    For Gmail, use an <a href="https://support.google.com/accounts/answer/185833" target="_blank">App Password</a>.
-                                    Never use your regular password in third-party applications.
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="provider" class="form-label">Email Provider</label>
-                                <select class="form-select" id="provider" name="provider">
-                                    <option value="auto" selected>Auto-detect</option>
-                                    <option value="gmail">Gmail</option>
-                                    <option value="outlook">Outlook/Hotmail</option>
-                                    <option value="yahoo">Yahoo</option>
-                                    <option value="aol">AOL</option>
-                                    <option value="icloud">iCloud</option>
-                                    <option value="zoho">Zoho</option>
-                                    <option value="protonmail">ProtonMail (requires Bridge)</option>
-                                    <option value="yandex">Yandex</option>
-                                    <option value="other">Other</option>
-                                </select>
-                            </div>
-                            
-                            <div class="mb-3" id="imap-server-group" style="display: none;">
-                                <label for="imap_server" class="form-label">IMAP Server</label>
-                                <input type="text" class="form-control" id="imap_server" name="imap_server" 
-                                       placeholder="e.g., imap.gmail.com">
-                                <div class="form-text">
-                                    Only needed if auto-detection fails or you selected "Other".
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="folder" class="form-label">Mail Folder</label>
-                                <input type="text" class="form-control" id="folder" name="folder" value="INBOX">
-                                <div class="form-text">
-                                    The mail folder to fetch emails from (usually "INBOX").
-                                </div>
-                            </div>
-                            
-                            <div class="mb-3">
-                                <label for="max_emails" class="form-label">Maximum Emails to Fetch</label>
-                                <input type="number" class="form-control" id="max_emails" name="max_emails" 
-                                       value="10" min="1" max="50">
-                            </div>
-                            
-                            <div class="mb-3">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="agree" required>
-                                    <label class="form-check-label" for="agree">
-                                        I understand this tool will access my email account using the credentials I provide.
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <button type="submit" class="btn btn-primary">Fetch Emails</button>
-                        </form>
                     </div>
                 </div>
                 
                 <div class="card">
                     <div class="card-header">
-                        <h2 class="h4 mb-0">Security Information</h2>
+                        <h2 class="h4 mb-0">How It Works</h2>
                     </div>
                     <div class="card-body">
-                        <h3 class="h5">Important Security Notes</h3>
-                        <ul>
-                            <li><strong>App Passwords:</strong> For services with 2-factor authentication (like Gmail), 
-                                use an app password instead of your regular password.</li>
-                            <li><strong>No Stored Credentials:</strong> Your email credentials are not stored persistently by this application.</li>
-                            <li><strong>Secure Connection:</strong> All connections to email providers use SSL encryption.</li>
-                        </ul>
+                        <div class="features-list">
+                            <div class="feature-item">
+                                <div class="feature-icon">1️⃣</div>
+                                <div>
+                                    <h5>Sign in with Google</h5>
+                                    <p>Securely authenticate with your Google account. We use OAuth, so your password is never shared with us.</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">2️⃣</div>
+                                <div>
+                                    <h5>Fetch Your Emails</h5>
+                                    <p>We'll securely retrieve your emails from Gmail using the Gmail API.</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">3️⃣</div>
+                                <div>
+                                    <h5>Analyze Security</h5>
+                                    <p>Each email is analyzed with our QMail Trust Score system, which checks sender domains, content patterns, and links for security issues.</p>
+                                </div>
+                            </div>
+                            <div class="feature-item">
+                                <div class="feature-icon">4️⃣</div>
+                                <div>
+                                    <h5>Review Results</h5>
+                                    <p>See the security results for each email, with detailed information about potential threats and security recommendations.</p>
+                                </div>
+                            </div>
+                        </div>
                         
-                        <h3 class="h5">How to Get an App Password</h3>
-                        <ol>
-                            <li>For Gmail:
-                                <ul>
-                                    <li>Go to your Google Account → Security → 2-Step Verification → App passwords</li>
-                                    <li>Create a new app password specifically for this app</li>
-                                </ul>
-                            </li>
-                            <li>For Outlook/Hotmail:
-                                <ul>
-                                    <li>Go to your Microsoft account → Security → Advanced security options → App passwords</li>
-                                </ul>
-                            </li>
-                            <li>For Yahoo:
-                                <ul>
-                                    <li>Go to Account security → Generate app password</li>
-                                </ul>
-                            </li>
-                        </ol>
-                        
-                        <h3 class="h5">IMAP Settings for Popular Providers</h3>
-                        <ul>
-                            <li>Gmail: imap.gmail.com</li>
-                            <li>Outlook/Hotmail: outlook.office365.com</li>
-                            <li>Yahoo: imap.mail.yahoo.com</li>
-                            <li>AOL: imap.aol.com</li>
-                            <li>iCloud: imap.mail.me.com</li>
-                            <li>ProtonMail: Requires ProtonMail Bridge application</li>
-                        </ul>
+                        <div class="alert alert-info mt-4">
+                            <h5 class="alert-heading">Privacy Commitment</h5>
+                            <p class="mb-0">Your email content is never stored permanently. All analysis is done securely and all data is deleted when you clear your results or log out.</p>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
-
-    <script>
-        // Show the IMAP server field when "Other" is selected
-        document.getElementById('provider').addEventListener('change', function() {
-            const imapServerGroup = document.getElementById('imap-server-group');
-            if (this.value === 'other') {
-                imapServerGroup.style.display = 'block';
-            } else {
-                imapServerGroup.style.display = 'none';
-            }
-        });
-    </script>
 </body>
 </html>
