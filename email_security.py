@@ -29,17 +29,51 @@ DEFAULT_TRUSTED_DOMAINS = [
 
 # Common email patterns indicating phishing or spam
 SUSPICIOUS_PATTERNS = [
+    # Urgency and pressure tactics
     r'urgent.*action', 
-    r'verify.*account.*immediately',
+    r'act now',
+    r'immediate attention',
+    r'account suspension',
+    r'limited time',
+    r'expir(e|ing|ed)',
+    
+    # Account and security issues
+    r'verify.*account',
+    r'confirm.*identity',
     r'suspicious.*activity',
-    r'password.*expire',
+    r'unusual.*login',
+    r'password.*reset',
+    r'security.*breach',
+    
+    # Financial hooks
     r'won.*lottery',
     r'million.*dollar',
     r'claim.*prize',
+    r'unclaimed.*funds',
+    r'inheritance',
+    r'investment opportunity',
+    
+    # Action prompts
     r'click.*here',
-    r'account.*suspended',
+    r'log in.*now', 
+    r'sign in.*now',
     r'update.*payment',
-    r'unusual.*login',
+    r'update.*account',
+    r'confirm.*details',
+    
+    # Request for sensitive information
+    r'confirm.*password',
+    r'provide.*credentials',
+    r'send.*information',
+    r'verify.*payment',
+    r'verify.*identity',
+    
+    # Threats
+    r'account.*suspended',
+    r'account.*terminated',
+    r'legal.*action',
+    r'failure to respond',
+    r'will be closed',
 ]
 
 def extract_domain_from_email(email_address: str) -> str:

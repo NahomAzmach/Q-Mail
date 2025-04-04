@@ -6,6 +6,33 @@
     <title>Email Fetcher Results</title>
     <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .email-body-text {
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            background-color: rgba(0,0,0,0.05);
+            padding: 1rem;
+            border-radius: 0.25rem;
+        }
+        .email-subject {
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+        .email-meta {
+            font-size: 0.85rem;
+            opacity: 0.8;
+        }
+        .accordion-button {
+            padding-top: 0.75rem;
+            padding-bottom: 0.75rem;
+        }
+        .security-badge {
+            font-size: 0.8rem;
+            margin-left: 0.5rem;
+        }
+    </style>
 </head>
 <body>
     <div class="container py-4">
@@ -79,12 +106,29 @@
                                             <button class="accordion-button collapsed" type="button" 
                                                     data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" 
                                                     aria-expanded="false" aria-controls="collapse{{ loop.index }}">
-                                                <div class="email-header">
-                                                    <div class="email-subject">{{ email.subject or '(No Subject)' }}</div>
-                                                    <div class="email-meta">
-                                                        <small>From: {{ email.from }}</small>
-                                                        <small class="ms-2">{{ email.date }}</small>
+                                                <div class="email-header w-100 d-flex justify-content-between">
+                                                    <div>
+                                                        <div class="email-subject">{{ email.subject or '(No Subject)' }}</div>
+                                                        <div class="email-meta">
+                                                            <small>From: {{ email.from }}</small>
+                                                            <small class="ms-2">{{ email.date }}</small>
+                                                        </div>
                                                     </div>
+                                                    {% if email.security_analysis %}
+                                                        {% set risk_level = email.security_analysis.risk_level | lower %}
+                                                        {% if risk_level == 'low' %}
+                                                            {% set badge_color = 'success' %}
+                                                        {% elif risk_level == 'medium' %}
+                                                            {% set badge_color = 'warning' %}
+                                                        {% elif risk_level == 'high' %}
+                                                            {% set badge_color = 'danger' %}
+                                                        {% else %}
+                                                            {% set badge_color = 'secondary' %}
+                                                        {% endif %}
+                                                        <span class="badge bg-{{ badge_color }} security-badge">
+                                                            Risk: {{ email.security_analysis.risk_level }}
+                                                        </span>
+                                                    {% endif %}
                                                 </div>
                                             </button>
                                         </h2>
@@ -98,6 +142,69 @@
                                                     <div class="card-body">
                                                         <p class="mb-1"><strong>Subject:</strong> {{ email.subject or '(No Subject)' }}</p>
                                                         <p class="mb-1"><strong>Date:</strong> {{ email.date }}</p>
+                                                        
+                                                        {% if email.security_analysis %}
+                                                        <div class="mt-3 mb-3">
+                                                            <h5>Security Analysis</h5>
+                                                            
+                                                            {% set risk_level = email.security_analysis.risk_level | lower %}
+                                                            {% if risk_level == 'low' %}
+                                                                {% set badge_color = 'success' %}
+                                                            {% elif risk_level == 'medium' %}
+                                                                {% set badge_color = 'warning' %}
+                                                            {% elif risk_level == 'high' %}
+                                                                {% set badge_color = 'danger' %}
+                                                            {% else %}
+                                                                {% set badge_color = 'secondary' %}
+                                                            {% endif %}
+                                                            
+                                                            <div class="d-flex align-items-center mb-2">
+                                                                <span class="me-2">Risk Level:</span>
+                                                                <span class="badge bg-{{ badge_color }}">{{ email.security_analysis.risk_level }}</span>
+                                                            </div>
+                                                            
+                                                            <div class="mb-2">
+                                                                <p class="mb-1">Sender Domain: <code>{{ email.security_analysis.sender_domain }}</code></p>
+                                                                <p class="mb-1">
+                                                                    Trusted Domain: 
+                                                                    {% if email.security_analysis.is_trusted_domain %}
+                                                                        <span class="badge bg-success">Yes</span>
+                                                                    {% else %}
+                                                                        <span class="badge bg-danger">No</span>
+                                                                    {% endif %}
+                                                                </p>
+                                                            </div>
+                                                            
+                                                            {% if email.security_analysis.suspicious_patterns %}
+                                                                <div class="alert alert-warning">
+                                                                    <strong>Suspicious Patterns Detected:</strong>
+                                                                    <ul class="mb-0 mt-1">
+                                                                        {% for pattern in email.security_analysis.suspicious_patterns %}
+                                                                            <li><code>{{ pattern }}</code></li>
+                                                                        {% endfor %}
+                                                                    </ul>
+                                                                </div>
+                                                            {% else %}
+                                                                <p class="text-success">No suspicious patterns detected.</p>
+                                                            {% endif %}
+                                                            
+                                                            <div class="mt-3">
+                                                                <div class="alert alert-info">
+                                                                    <strong>Security Tips:</strong>
+                                                                    <ul class="mb-0">
+                                                                        {% if not email.security_analysis.is_trusted_domain %}
+                                                                            <li>The sender domain is not in the trusted list - verify the sender's identity through other means</li>
+                                                                        {% endif %}
+                                                                        {% if email.security_analysis.suspicious_patterns %}
+                                                                            <li>Suspicious wording detected - be cautious of urgent requests or demands</li>
+                                                                            <li>Don't click links or download attachments if you're uncertain about the email's authenticity</li>
+                                                                        {% endif %}
+                                                                    </ul>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        {% endif %}
+                                                        
                                                         <hr>
                                                         <div class="email-body">
                                                             {% if email.body %}
