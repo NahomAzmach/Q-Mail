@@ -3,15 +3,37 @@ from flask import Flask, render_template, request, session, flash, redirect, url
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.orm import DeclarativeBase
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Database setup
+class Base(DeclarativeBase):
+    pass
+
+db = SQLAlchemy(model_class=Base)
+
 # Create the Flask application
 app = Flask(__name__)
 app.secret_key = os.environ.get("SESSION_SECRET", os.urandom(24))
+
+# Configure the database
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+# Initialize the app with the extension
+db.init_app(app)
+
+# Import models and create tables
+with app.app_context():
+    from models import EmailSession, Email
+    db.create_all()
 
 @app.route('/', methods=['GET'])
 def index():
@@ -46,7 +68,7 @@ def fetch():
     
     # Fetch emails
     try:
-        emails = fetch_emails(
+        emails_data = fetch_emails(
             email_address=email_address,
             password=password,
             imap_server=imap_server,
@@ -55,18 +77,36 @@ def fetch():
         )
         
         # Check for errors
-        if emails and 'error' in emails[0]:
-            flash(f"Error fetching emails: {emails[0]['message']}", 'danger')
+        if emails_data and 'error' in emails_data[0]:
+            flash(f"Error fetching emails: {emails_data[0]['message']}", 'danger')
             return redirect(url_for('index'))
         
-        # Store results in session for display
-        session['email_results'] = {
-            'email_address': email_address,
-            'imap_server': imap_server,
-            'folder': folder,
-            'count': len(emails),
-            'emails': emails
-        }
+        # Create a new email session in the database
+        email_session = EmailSession(
+            email_address=email_address,
+            provider=provider or 'auto-detected'
+        )
+        db.session.add(email_session)
+        db.session.flush()  # Generate ID for session
+        
+        # Store each email in the database
+        for email_data in emails_data:
+            email = Email(
+                session_id=email_session.id,
+                subject=email_data.get('subject', ''),
+                sender=email_data.get('from', ''),
+                date=email_data.get('date', ''),
+                body=email_data.get('body', ''),
+                error='error' in email_data,
+                error_message=email_data.get('message', '') if 'error' in email_data else None
+            )
+            db.session.add(email)
+        
+        # Commit all changes to database
+        db.session.commit()
+        
+        # Store only the session ID in the session cookie
+        session['email_session_id'] = email_session.id
         
         return redirect(url_for('results'))
         
@@ -78,20 +118,49 @@ def fetch():
 @app.route('/results', methods=['GET'])
 def results():
     """Display the fetched email results."""
-    # Get results from session
-    email_results = session.get('email_results')
+    # Get session ID from the session
+    session_id = session.get('email_session_id')
     
-    if not email_results:
+    if not session_id:
         flash('No email results found. Please fetch emails first.', 'warning')
         return redirect(url_for('index'))
     
-    return render_template('results.html', results=email_results)
+    # Retrieve the session and its emails from the database
+    email_session = EmailSession.query.get(session_id)
+    
+    if not email_session:
+        flash('Email results not found. Please fetch emails again.', 'warning')
+        session.pop('email_session_id', None)
+        return redirect(url_for('index'))
+    
+    # Format the results to match the template expectations
+    results = {
+        'email_address': email_session.email_address,
+        'imap_server': 'Stored in database',
+        'folder': 'INBOX',
+        'count': len(email_session.emails),
+        'emails': [email.to_dict() for email in email_session.emails]
+    }
+    
+    return render_template('results.html', results=results)
 
 @app.route('/clear', methods=['GET'])
 def clear():
-    """Clear the session data and return to the form."""
-    if 'email_results' in session:
-        del session['email_results']
+    """Clear the session data and optionally delete the data from database."""
+    session_id = session.get('email_session_id')
+    
+    if session_id:
+        # Option to delete from database too
+        try:
+            email_session = EmailSession.query.get(session_id)
+            if email_session:
+                db.session.delete(email_session)
+                db.session.commit()
+        except Exception as e:
+            logger.error(f"Error deleting email session: {str(e)}")
+    
+    # Clear session
+    session.pop('email_session_id', None)
     
     flash('Results cleared.', 'info')
     return redirect(url_for('index'))
