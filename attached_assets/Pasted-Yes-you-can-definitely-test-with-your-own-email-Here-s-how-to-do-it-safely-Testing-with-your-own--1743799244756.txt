@@ -1,0 +1,64 @@
+Yes, you can definitely test with your own email. Here's how to do it safely:
+Testing with your own email account:
+
+Create a test script:
+
+pythonCopy# test_email_fetcher.py
+from email_fetcher import fetch_emails  # Import the function we created earlier
+
+# Your email credentials
+EMAIL = "your_email@gmail.com"  # Replace with your actual email
+PASSWORD = "your_app_password"   # Use an app password, not your actual password!
+IMAP_SERVER = "imap.gmail.com"   # For Gmail (change for other providers)
+
+# Run the test
+def main():
+    print("Fetching emails...")
+    try:
+        emails = fetch_emails(EMAIL, PASSWORD, IMAP_SERVER)
+        print(f"Successfully fetched {len(emails)} emails!")
+        
+        # Print the first few emails to verify
+        for i, email_data in enumerate(emails[:3]):  # Show only first 3
+            print(f"\nEmail {i+1}:")
+            print(f"Subject: {email_data['subject']}")
+            print(f"From: {email_data['from']}")
+            print(f"Body preview: {email_data['body'][:100]}...")
+    except Exception as e:
+        print(f"Error fetching emails: {e}")
+
+if __name__ == "__main__":
+    main()
+
+Important security notes for testing with Gmail:
+
+Don't use your regular password in the code. Use an "App Password" instead:
+
+Go to your Google Account → Security → 2-Step Verification → App passwords
+Create a new app password specifically for this test
+
+
+For other email providers, check if they offer similar app password features
+
+
+For other email providers:
+
+Outlook/Hotmail: imap_server = "outlook.office365.com"
+Yahoo: imap_server = "imap.mail.yahoo.com"
+ProtonMail: Requires their Bridge application
+
+
+Enable IMAP in your email settings:
+
+For Gmail: Settings → See all settings → Forwarding and POP/IMAP → Enable IMAP
+
+
+Allow less secure apps (if needed):
+
+Some providers require you to explicitly allow access from "less secure apps"
+For Gmail, this setting has been deprecated in favor of app passwords
+
+
+
+After running the test, you should see output showing the emails that were fetched from your inbox. If you encounter any authentication issues, double-check your app password and make sure IMAP is enabled in your email settings.
+Would you like guidance on how to enhance the email fetcher to handle specific email formats or implement the spam detection functionality?
