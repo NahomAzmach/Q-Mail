@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Fetcher Results</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h1 class="h3 mb-0">Email Fetcher Results</h1>
+                        <div>
+                            <a href="{{ url_for('index') }}" class="btn btn-sm btn-secondary me-2">Back to Form</a>
+                            <a href="{{ url_for('clear') }}" class="btn btn-sm btn-outline-danger">Clear Results</a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <div class="mb-4">
+                            <h2 class="h4">Summary</h2>
+                            <ul class="list-group">
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Email Address
+                                    <span class="badge bg-secondary rounded-pill">{{ results.email_address }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    IMAP Server
+                                    <span class="badge bg-secondary rounded-pill">{{ results.imap_server }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Folder
+                                    <span class="badge bg-secondary rounded-pill">{{ results.folder }}</span>
+                                </li>
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    Emails Retrieved
+                                    <span class="badge bg-primary rounded-pill">{{ results.count }}</span>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        {% if results.count == 0 %}
+                            <div class="alert alert-info">
+                                No emails found in the selected folder.
+                            </div>
+                        {% else %}
+                            <h2 class="h4 mb-3">Emails</h2>
+                            
+                            <div class="accordion" id="emailAccordion">
+                                {% for email in results.emails %}
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="heading{{ loop.index }}">
+                                            <button class="accordion-button collapsed" type="button" 
+                                                    data-bs-toggle="collapse" data-bs-target="#collapse{{ loop.index }}" 
+                                                    aria-expanded="false" aria-controls="collapse{{ loop.index }}">
+                                                <div class="email-header">
+                                                    <div class="email-subject">{{ email.subject or '(No Subject)' }}</div>
+                                                    <div class="email-meta">
+                                                        <small>From: {{ email.from }}</small>
+                                                        <small class="ms-2">{{ email.date }}</small>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        </h2>
+                                        <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" 
+                                             aria-labelledby="heading{{ loop.index }}" data-bs-parent="#emailAccordion">
+                                            <div class="accordion-body">
+                                                <div class="card mb-3">
+                                                    <div class="card-header">
+                                                        <strong>From:</strong> {{ email.from }}
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <p class="mb-1"><strong>Subject:</strong> {{ email.subject or '(No Subject)' }}</p>
+                                                        <p class="mb-1"><strong>Date:</strong> {{ email.date }}</p>
+                                                        <hr>
+                                                        <div class="email-body">
+                                                            {% if email.body %}
+                                                                <pre class="email-body-text">{{ email.body }}</pre>
+                                                            {% else %}
+                                                                <p class="text-muted">(No body content)</p>
+                                                            {% endif %}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

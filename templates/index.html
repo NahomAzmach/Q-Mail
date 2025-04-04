@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Fetcher</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h1 class="h3 mb-0">Email Fetcher</h1>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">This tool allows you to securely fetch emails from your inbox using IMAP.</p>
+                        
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <form action="{{ url_for('fetch') }}" method="POST">
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email Address</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="password" class="form-label">Password or App Password</label>
+                                <input type="password" class="form-control" id="password" name="password" required>
+                                <div class="form-text">
+                                    For Gmail, use an <a href="https://support.google.com/accounts/answer/185833" target="_blank">App Password</a>.
+                                    Never use your regular password in third-party applications.
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="provider" class="form-label">Email Provider</label>
+                                <select class="form-select" id="provider" name="provider">
+                                    <option value="auto" selected>Auto-detect</option>
+                                    <option value="gmail">Gmail</option>
+                                    <option value="outlook">Outlook/Hotmail</option>
+                                    <option value="yahoo">Yahoo</option>
+                                    <option value="aol">AOL</option>
+                                    <option value="icloud">iCloud</option>
+                                    <option value="zoho">Zoho</option>
+                                    <option value="protonmail">ProtonMail (requires Bridge)</option>
+                                    <option value="yandex">Yandex</option>
+                                    <option value="other">Other</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3" id="imap-server-group" style="display: none;">
+                                <label for="imap_server" class="form-label">IMAP Server</label>
+                                <input type="text" class="form-control" id="imap_server" name="imap_server" 
+                                       placeholder="e.g., imap.gmail.com">
+                                <div class="form-text">
+                                    Only needed if auto-detection fails or you selected "Other".
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="folder" class="form-label">Mail Folder</label>
+                                <input type="text" class="form-control" id="folder" name="folder" value="INBOX">
+                                <div class="form-text">
+                                    The mail folder to fetch emails from (usually "INBOX").
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="max_emails" class="form-label">Maximum Emails to Fetch</label>
+                                <input type="number" class="form-control" id="max_emails" name="max_emails" 
+                                       value="10" min="1" max="50">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="agree" required>
+                                    <label class="form-check-label" for="agree">
+                                        I understand this tool will access my email account using the credentials I provide.
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Fetch Emails</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="h4 mb-0">Security Information</h2>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="h5">Important Security Notes</h3>
+                        <ul>
+                            <li><strong>App Passwords:</strong> For services with 2-factor authentication (like Gmail), 
+                                use an app password instead of your regular password.</li>
+                            <li><strong>No Stored Credentials:</strong> Your email credentials are not stored persistently by this application.</li>
+                            <li><strong>Secure Connection:</strong> All connections to email providers use SSL encryption.</li>
+                        </ul>
+                        
+                        <h3 class="h5">How to Get an App Password</h3>
+                        <ol>
+                            <li>For Gmail:
+                                <ul>
+                                    <li>Go to your Google Account → Security → 2-Step Verification → App passwords</li>
+                                    <li>Create a new app password specifically for this app</li>
+                                </ul>
+                            </li>
+                            <li>For Outlook/Hotmail:
+                                <ul>
+                                    <li>Go to your Microsoft account → Security → Advanced security options → App passwords</li>
+                                </ul>
+                            </li>
+                            <li>For Yahoo:
+                                <ul>
+                                    <li>Go to Account security → Generate app password</li>
+                                </ul>
+                            </li>
+                        </ol>
+                        
+                        <h3 class="h5">IMAP Settings for Popular Providers</h3>
+                        <ul>
+                            <li>Gmail: imap.gmail.com</li>
+                            <li>Outlook/Hotmail: outlook.office365.com</li>
+                            <li>Yahoo: imap.mail.yahoo.com</li>
+                            <li>AOL: imap.aol.com</li>
+                            <li>iCloud: imap.mail.me.com</li>
+                            <li>ProtonMail: Requires ProtonMail Bridge application</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Show the IMAP server field when "Other" is selected
+        document.getElementById('provider').addEventListener('change', function() {
+            const imapServerGroup = document.getElementById('imap-server-group');
+            if (this.value === 'other') {
+                imapServerGroup.style.display = 'block';
+            } else {
+                imapServerGroup.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>

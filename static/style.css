@@ -1,0 +1,51 @@
+/* Custom styles for the Email Fetcher application */
+
+/* Email results styles */
+.email-header {
+    width: 100%;
+}
+
+.email-subject {
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 80%;
+}
+
+.email-meta {
+    color: var(--bs-secondary-color);
+    margin-top: 0.25rem;
+}
+
+.email-body {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.email-body-text {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: var(--bs-font-sans-serif);
+    padding: 0;
+    background-color: transparent;
+    border: none;
+    margin: 0;
+    width: 100%;
+}
+
+/* Form styling */
+.form-text {
+    margin-top: 0.25rem;
+}
+
+/* Improved accordion styling */
+.accordion-button:not(.collapsed) {
+    background-color: var(--bs-primary-bg-subtle);
+    color: var(--bs-primary-text);
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border-color: var(--bs-border-color);
+}
