@@ -197,7 +197,7 @@ def fetch_emails(email_address: str, password: str, imap_server: str,
         status, messages = mail.select(folder)
         
         if status != "OK":
-            error_msg = f"Failed to select folder '{folder}': {messages[0].decode()}"
+            error_msg = f"Failed to select folder '{folder}': {messages[0].decode() if messages and messages[0] else 'Unknown error'}"
             logger.error(error_msg)
             emails.append({
                 "error": True,
@@ -206,59 +206,85 @@ def fetch_emails(email_address: str, password: str, imap_server: str,
             return emails
         
         # Get total number of emails
-        message_count = int(messages[0])
+        message_count = int(messages[0].decode() if messages and messages[0] else 0)
         
         if message_count == 0:
             logger.info(f"No emails found in folder: {folder}")
             return emails
         
-        # Calculate which emails to fetch (most recent first)
-        start_index = max(1, message_count - max_emails + 1)
-        end_index = message_count
+        # Search for ALL emails - this will get both read and unread
+        status, search_data = mail.search(None, "ALL")
         
-        # Fetch emails in the specified range
-        status, messages = mail.fetch(f"{start_index}:{end_index}", "(RFC822)")
+        if status != "OK" or not search_data or not search_data[0]:
+            # If ALL search fails, try more specific search
+            logger.warning("ALL search failed, trying alternative search")
+            status, search_data = mail.search(None, "(OR SEEN UNSEEN)")
+            
+            if status != "OK" or not search_data or not search_data[0]:
+                error_msg = "Failed to search emails: No emails found"
+                logger.error(error_msg)
+                emails.append({
+                    "error": True,
+                    "message": error_msg
+                })
+                return emails
         
-        if status != "OK":
-            error_msg = f"Failed to fetch emails: {messages[0].decode()}"
-            logger.error(error_msg)
-            emails.append({
-                "error": True,
-                "message": error_msg
-            })
-            return emails
+        # Get message IDs as a list 
+        message_ids = search_data[0].split()
         
-        # Process each email
-        for i in range(0, len(messages), 2):
-            if i >= len(messages):
-                break
+        # Sort in reverse order (newest first)
+        message_ids = sorted(message_ids, reverse=True)
+        
+        # Limit to max_emails
+        message_ids = message_ids[:max_emails]
+        
+        logger.info(f"Found {len(message_ids)} emails to process")
+        
+        # Fetch and process each email by ID
+        for msg_id in message_ids:
+            try:
+                # Fetch the email using its ID
+                status, msg_data = mail.fetch(msg_id, "(RFC822)")
                 
-            # Skip if not a tuple (sometimes fetch returns status messages)
-            if not isinstance(messages[i], tuple):
+                if status != "OK" or not msg_data:
+                    logger.warning(f"Failed to fetch email ID {msg_id.decode() if hasattr(msg_id, 'decode') else msg_id}")
+                    continue
+                
+                # Find the email data in the response
+                raw_email = None
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        raw_email = response_part[1]
+                        break
+                
+                if not raw_email:
+                    logger.warning(f"No email data found for ID {msg_id.decode() if hasattr(msg_id, 'decode') else msg_id}")
+                    continue
+                
+                # Parse the email data
+                email_msg = email.message_from_bytes(raw_email)
+                
+                # Extract email details
+                subject = decode_mime_header(email_msg["Subject"])
+                from_address = decode_mime_header(email_msg["From"])
+                date = decode_mime_header(email_msg["Date"])
+                
+                # Get email body
+                body = get_email_body(email_msg)
+                
+                # Create email data dictionary
+                email_data = {
+                    "subject": subject,
+                    "from": from_address,
+                    "date": date,
+                    "body": body,
+                }
+                
+                emails.append(email_data)
+                
+            except Exception as e:
+                logger.error(f"Error processing email ID {msg_id}: {str(e)}")
                 continue
-                
-            msg_data = messages[i]
-            
-            # Parse the email data
-            email_msg = email.message_from_bytes(msg_data[1])
-            
-            # Extract email details
-            subject = decode_mime_header(email_msg["Subject"])
-            from_address = decode_mime_header(email_msg["From"])
-            date = decode_mime_header(email_msg["Date"])
-            
-            # Get email body
-            body = get_email_body(email_msg)
-            
-            # Create email data dictionary
-            email_data = {
-                "subject": subject,
-                "from": from_address,
-                "date": date,
-                "body": body,
-            }
-            
-            emails.append(email_data)
         
     except Exception as e:
         error_msg = f"Error fetching emails: {str(e)}"
