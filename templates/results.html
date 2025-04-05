@@ -80,28 +80,18 @@
                         <div>
                             <a href="{{ url_for('index') }}" class="btn btn-sm btn-secondary me-2">Back to Form</a>
                             
-                            <!-- AI Toggle Switch -->
-                            <div class="d-flex align-items-center me-2">
-                                <div class="form-check form-switch mb-0">
-                                    <a href="{{ url_for('toggle_ai') }}" class="text-decoration-none">
-                                        <label class="form-check-label d-flex align-items-center">
-                                            {% if results.full_content %}
-                                            <input class="form-check-input me-2" type="checkbox" role="switch" checked disabled>
-                                            <span class="text-success fw-bold">AI Analysis: ON</span>
-                                            {% else %}
-                                            <input class="form-check-input me-2" type="checkbox" role="switch" disabled>
-                                            <span class="text-secondary">AI Analysis: OFF</span>
-                                            {% endif %}
-                                        </label>
-                                    </a>
-                                </div>
-                            </div>
-                            
-                            <a href="{{ url_for('clear') }}" class="btn btn-sm btn-outline-danger me-2">Clear Results</a>
-                            {% if session.get('credentials') %}
-                            <a href="{{ url_for('fetch_google_emails') }}" class="btn btn-sm btn-success me-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope-fill me-1" viewBox="0 0 16 16">
-                                    <path d="M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414.05 3.555ZM0 4.697v7.104l5.803-3.558L0 4.697ZM6.761 8.83l-6.57 4.027A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.027L8 9.586l-1.239-.757Zm3.436-.586L16 11.801V4.697l-5.803 3.546Z"/>
+                            <!-- AI Toggle Button -->
+                            <a href="{{ url_for('toggle_ai') }}" class="btn btn-sm {% if results.full_content %}btn-success{% else %}btn-outline-secondary{% endif %} me-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-toggle-{% if results.full_content %}on{% else %}off{% endif %} me-1" viewBox="0 0 16 16">
+                                    {% if results.full_content %}
+                                    <path d="M5 3a5 5 0 0 0 0 10h6a5 5 0 0 0 0-10H5zm6 9a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/>
+                                    {% else %}
+                                    <path d="M11 4a4 4 0 0 1 0 8H8a4.992 4.992 0 0 0 2-4 4.992 4.992 0 0 0-2-4h3zm-6 8a4 4 0 1 1 0-8 4 4 0 0 1 0 8zM0 8a5 5 0 0 0 5 5h6a5 5 0 0 0 0-10H5a5 5 0 0 0-5 5z"/>
+                                    {% endif %}
+                                </svg>
+                                AI Analysis: {% if results.full_content %}ON{% else %}OFF{% endif %}
+                            </a>
+
                                 </svg>
                                 Fetch More from Gmail
                             </a>
