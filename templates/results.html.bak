@@ -242,13 +242,6 @@
                                                                 </div>
                                                             {% endif %}
                                                             
-                                                            {% if email.security_analysis.phishing_detected %}
-                                                                <div class="alert alert-danger">
-                                                                    <strong>⚠️ PhishTank API: Phishing URLs Detected!</strong>
-                                                                    <p class="mb-1 mt-1">One or more links in this email were confirmed as phishing URLs by PhishTank database.</p>
-                                                                </div>
-                                                            {% endif %}
-
                                                             {% if email.security_analysis.links_found > 0 %}
                                                                 <div class="mt-3">
                                                                     <strong>Links Analysis:</strong>

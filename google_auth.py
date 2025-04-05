@@ -150,15 +150,15 @@ def callback():
         print(f"Authorization response URL: {request.url}")
         print(f"Configured redirect URI: {REDIRECT_URI}")
         
-        # Fix the URL if it's http instead of https
+        # Don't try to convert between http and https - it causes issues
+        # Just use the URL as-is
         auth_response = request.url
-        if auth_response and REDIRECT_URI:
-            if auth_response.startswith('http:') and REDIRECT_URI.startswith('https:'):
-                auth_response = 'https:' + auth_response[5:]
-                print(f"Fixed auth response URL to: {auth_response}")
-        else:
-            print("Warning: auth_response or REDIRECT_URI is None")
+        print(f"Using auth response URL: {auth_response}")
         
+        # We need to ensure our environment understands HTTP is OK for development
+        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+        
+        # Fetch the token
         flow.fetch_token(authorization_response=auth_response)
         
         # Get the credentials from the flow
@@ -214,8 +214,8 @@ def get_oauth_flow():
         # First try to get the domain from the request if available
         if request and hasattr(request, 'host'):
             host = request.host
-            scheme = request.scheme
-            REDIRECT_URI = f"{scheme}://{host}/google_login/callback"
+            # Always use HTTP for development in Replit
+            REDIRECT_URI = f"http://{host}/google_login/callback"
             print(f"DEBUG - Using host-based redirect URI: {REDIRECT_URI}")
         else:
             replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
@@ -225,7 +225,8 @@ def get_oauth_flow():
                 if ',' in replit_domain:
                     replit_domain = replit_domain.split(',')[0].strip()
                 
-                REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
+                # Always use HTTP for development in Replit
+                REDIRECT_URI = f"http://{replit_domain}/google_login/callback"
                 print(f"DEBUG - Using environment-based redirect URI: {REDIRECT_URI}")
                 print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
             else:
