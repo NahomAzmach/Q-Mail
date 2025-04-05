@@ -60,9 +60,9 @@ def google_login():
             else:
                 domain_for_uri = replit_domain
                 
-            # Always use HTTP for the redirect URI (not HTTPS)
-            # Google seems to be trying to use HTTP even when we configure HTTPS
-            redirect_uri = f"http://{domain_for_uri}/google_login/callback"
+            # Always use HTTPS for the redirect URI
+            # Google OAuth requires HTTPS for redirect URIs
+            redirect_uri = f"https://{domain_for_uri}/google_login/callback"
             
             # Override the REDIRECT_URI global
             global REDIRECT_URI
@@ -214,8 +214,8 @@ def get_oauth_flow():
         # First try to get the domain from the request if available
         if request and hasattr(request, 'host'):
             host = request.host
-            # Always use HTTP for development in Replit
-            REDIRECT_URI = f"http://{host}/google_login/callback"
+            # Always use HTTPS for Google Cloud Console compatibility
+            REDIRECT_URI = f"https://{host}/google_login/callback"
             print(f"DEBUG - Using host-based redirect URI: {REDIRECT_URI}")
         else:
             replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
@@ -225,14 +225,14 @@ def get_oauth_flow():
                 if ',' in replit_domain:
                     replit_domain = replit_domain.split(',')[0].strip()
                 
-                # Always use HTTP for development in Replit
-                REDIRECT_URI = f"http://{replit_domain}/google_login/callback"
+                # Always use HTTPS for Google Cloud Console compatibility
+                REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
                 print(f"DEBUG - Using environment-based redirect URI: {REDIRECT_URI}")
                 print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
             else:
-                # Fallback to localhost
-                REDIRECT_URI = "http://localhost:5000/google_login/callback"
-                print("DEBUG - No Replit domain found, using localhost redirect URI")
+                # Fallback to localhost with HTTPS
+                REDIRECT_URI = "https://localhost:5000/google_login/callback"
+                print("DEBUG - No Replit domain found, using localhost HTTPS redirect URI")
     
     print(f"FINAL REDIRECT URI: {REDIRECT_URI}")
     print("Make sure this EXACT URI is registered in your Google Cloud Console!")

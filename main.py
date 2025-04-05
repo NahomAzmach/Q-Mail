@@ -120,10 +120,10 @@ def oauth_setup():
                         
                         <h4 class="mt-4 mb-3">Exact Redirect URI to Register:</h4>
                         <div class="code-block mb-4 p-3">
-                            <strong>http://{replit_domain}/google_login/callback</strong>
+                            <strong>https://{replit_domain}/google_login/callback</strong>
                         </div>
                         <div class="alert alert-warning">
-                            <strong>Important:</strong> Make sure to use <strong>http://</strong> (not https://) as shown above.
+                            <strong>Important:</strong> Make sure to use <strong>https://</strong> as shown above. Google OAuth requires secure redirect URIs.
                         </div>
                         
                         <div class="step">
@@ -141,7 +141,7 @@ def oauth_setup():
                             <p>In the "Authorized redirect URIs" section, add the exact URI shown above</p>
                             <p>Make sure to click "Save" after adding the URI</p>
                             <div class="alert alert-info">
-                                <strong>Important:</strong> The URI must match EXACTLY, including the http:// prefix and /google_login/callback suffix
+                                <strong>Important:</strong> The URI must match EXACTLY, including the https:// prefix and /google_login/callback suffix
                             </div>
                         </div>
                         
