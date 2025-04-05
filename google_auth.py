@@ -48,11 +48,43 @@ def google_login():
         
     # Set up the OAuth flow with the client secrets
     try:
-        # This will initialize REDIRECT_URI global variable
+        # Get the Replit domain from environment
+        replit_domain = os.environ.get('REPLIT_DOMAINS')
+        if replit_domain:
+            if ',' in replit_domain:
+                domain_for_uri = replit_domain.split(',')[0].strip()
+            else:
+                domain_for_uri = replit_domain
+                
+            # Always use HTTP for the redirect URI (not HTTPS)
+            # Google seems to be trying to use HTTP even when we configure HTTPS
+            redirect_uri = f"http://{domain_for_uri}/google_login/callback"
+            
+            # Override the REDIRECT_URI global
+            global REDIRECT_URI
+            REDIRECT_URI = redirect_uri
+            
+            # Recreate the client_config with the updated REDIRECT_URI
+            client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+            client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+            client_config = {
+                "web": {
+                    "client_id": client_id,
+                    "project_id": "",
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                    "client_secret": client_secret,
+                    "redirect_uris": [REDIRECT_URI]
+                }
+            }
+            with open(CLIENT_SECRETS_FILE, 'w') as f:
+                json.dump(client_config, f)
+        
+        # This will initialize or use our updated REDIRECT_URI
         flow = get_oauth_flow()
         
         # Print the exact redirect URI that will be used
-        global REDIRECT_URI
         print(f"DEBUG - login_route - Using Redirect URI: {REDIRECT_URI}")
         print(f"DEBUG - login_route - Make sure this URI is EXACTLY registered in Google Cloud Console")
         
@@ -90,7 +122,19 @@ def callback():
             print(f"Expected URI in Google Console: {REDIRECT_URI}")
             print(f"Actual request URI: {current_uri}")
             
-            flash("Authorization failed: The redirect URI doesn't match what's configured in Google Cloud Console. Please check the console output for details.", "danger")
+            # Display more detailed instructions
+            client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+            flash(f"""
+                <strong>OAuth Configuration Error:</strong> The redirect URI doesn't match what's configured in Google Cloud Console.<br>
+                <strong>Please register this exact URI in Google Cloud Console:</strong><br>
+                <code>{current_uri}</code><br>
+                <br>
+                <strong>Steps to fix:</strong><br>
+                1. Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a><br>
+                2. Edit the OAuth 2.0 Client ID: <code>{client_id}</code><br>
+                3. Add the above URI to "Authorized redirect URIs"<br>
+                4. Save changes and try again
+            """, "danger")
         else:
             flash(f"Authorization failed: {error}", "danger")
         return redirect(url_for("index"))

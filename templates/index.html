@@ -95,7 +95,18 @@
                                 </svg>
                                 Sign in with Google
                             </a>
-                            <div class="alert alert-info mt-4">
+                            
+                            <div class="alert alert-warning mt-4">
+                                <h6 class="mb-1">If you get a "redirect_uri_mismatch" error:</h6>
+                                <ol class="text-start mb-0 mt-2">
+                                    <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-decoration-underline">Google Cloud Console</a></li>
+                                    <li>Find your OAuth 2.0 Client ID</li>
+                                    <li>Add the exact redirect URI shown in the error message to "Authorized redirect URIs"</li>
+                                    <li>Also make sure the Gmail API is enabled in your Google Cloud project</li>
+                                </ol>
+                            </div>
+                            
+                            <div class="alert alert-info mt-3">
                                 <h6 class="mb-1">Important for Safari Users</h6>
                                 <p class="small mb-0">If you experience issues with the login process, please try the following:</p>
                                 <ul class="text-start small mt-2 mb-0">
