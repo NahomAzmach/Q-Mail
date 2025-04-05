@@ -80,7 +80,7 @@ class User(UserMixin, db.Model):
     id = Column(Integer, primary_key=True)
     username = Column(String(64), nullable=False)
     email = Column(String(120), unique=True, nullable=False)
-    profile_pic = Column(String(255))
+    profile_pic = Column(String(2048))
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def __repr__(self):
