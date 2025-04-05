@@ -13,6 +13,7 @@
 5. [API Endpoints & Integration](#api-endpoints--integration)
 6. [Deployment & Maintenance](#deployment--maintenance)
 7. [Future Enhancements](#future-enhancements)
+8. [Presentation Slide Deck](#presentation)
 
 ---
 
@@ -190,5 +191,10 @@ QMail is an advanced email analytics and security tool designed to:
   Leverage future quantum computing advancements for improved encryption and reduced processing times.
 
 ---
+
+## 8. Presentation Slides (Figma)
+
+[SLIDE DECK](https://www.figma.com/proto/q27xGFPtjbQ8FviOzP8TEV/Hackathon?page-id=45%3A7526&node-id=72-1636&viewport=89%2C-168%2C0.29&t=cWBaDZuiVPRXLEJC-1&scaling=contain&content-scaling=fixed&starting-point-node-id=72%3A1636&show-proto-sidebar=1)
+
 
 *QMail is designed to be both powerful and user-friendly, ensuring that users have full control over their email
