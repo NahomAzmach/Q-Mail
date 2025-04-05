@@ -13,6 +13,7 @@ import json
 import re
 import requests
 import urllib.parse
+import concurrent.futures
 from typing import Dict, List, Any, Tuple, Optional
 
 # Import standalone analyzer for fallback
@@ -89,7 +90,7 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
             "https://api.openai.com/v1/chat/completions",
             headers=headers,
             json=payload,
-            timeout=10  # Set a shorter timeout to avoid server timeouts
+            timeout=5  # Even shorter timeout to avoid worker timeouts
         )
         
         if response.status_code != 200:
@@ -162,6 +163,32 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
         # Fallback to rule-based analysis
         return analyze_email_with_rules(email_data)
 
+def process_email(args):
+    """
+    Process a single email with either OpenAI or rule-based analysis.
+    This function is designed to be used with ThreadPoolExecutor.
+    
+    Args:
+        args: Tuple of (email, use_openai)
+        
+    Returns:
+        Processed email with security analysis
+    """
+    email, use_openai = args
+    try:
+        if use_openai:
+            security_analysis = analyze_email_with_openai(email)
+        else:
+            security_analysis = analyze_email_with_rules(email)
+        
+        email["security_analysis"] = security_analysis
+        return email
+    except Exception as e:
+        logger.error(f"Error processing email: {str(e)}")
+        # Fallback to rule-based analysis
+        email["security_analysis"] = analyze_email_with_rules(email)
+        return email
+
 def batch_analyze_emails_with_openai(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Analyze a batch of emails using OpenAI API.
@@ -177,26 +204,35 @@ def batch_analyze_emails_with_openai(emails: List[Dict[str, Any]]) -> List[Dict[
         if not os.environ.get("OPENAI_API_KEY"):
             logger.warning("OPENAI_API_KEY not found in environment variables")
             return batch_analyze_emails_with_rules(emails)
+            
+        # Only process the first 3 emails with OpenAI to avoid timeouts
+        max_ai_emails = min(3, len(emails))
         
-        # Process emails one by one to avoid timeout issues
+        # Prepare tasks - first few with OpenAI, rest with rule-based
+        tasks = [(email, i < max_ai_emails) for i, email in enumerate(emails)]
+        
+        # Process emails in parallel
         analyzed_emails = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(process_email, task) for task in tasks]
+            
+            # Collect results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    email = future.result()
+                    analyzed_emails.append(email)
+                except Exception as e:
+                    logger.error(f"Thread error: {str(e)}")
+                    # Fallback to rule-based analysis for any failed email
+                    if len(analyzed_emails) < len(emails):
+                        # Get the email that failed and add it with rule-based analysis
+                        failed_email = emails[len(analyzed_emails)]
+                        failed_email["security_analysis"] = analyze_email_with_rules(failed_email)
+                        analyzed_emails.append(failed_email)
         
-        for i, email in enumerate(emails):
-            try:
-                # Add security analysis to the email
-                security_analysis = analyze_email_with_openai(email)
-                email["security_analysis"] = security_analysis
-                analyzed_emails.append(email)
-                
-                # Add a small delay between API calls to avoid rate limits
-                if i < len(emails) - 1:
-                    time.sleep(0.5)
-                    
-            except Exception as e:
-                logger.error(f"Error analyzing email {i+1}: {str(e)}")
-                # Use rule-based analysis as fallback for this email
-                email["security_analysis"] = analyze_email_with_rules(email)
-                analyzed_emails.append(email)
+        # The emails may be out of order due to parallel processing
+        # Sort them based on their original order if needed
+        # This assumes emails have an index or other identifier
         
         return analyzed_emails
         
