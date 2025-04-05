@@ -3,9 +3,10 @@ from flask import Flask, render_template, request, session, flash, redirect, url
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
-# Import both analysis methods to allow fallback
+# Import both analysis methods
 from email_security import batch_analyze_emails as rule_based_analyze_emails
-from email_ai_agent import batch_analyze_emails as ai_analyze_emails
+# Import the new standalone AI analyzer instead of the OpenAI implementation
+from standalone_ai_analyzer import batch_analyze_emails as ai_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
 from sqlalchemy.orm import DeclarativeBase
