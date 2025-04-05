@@ -194,17 +194,24 @@
                                                             <h5>Security Analysis</h5>
                                                             
                                                             {% set risk_level = email.security_analysis.risk_level | lower %}
-                                                            {% if risk_level == 'low' %}
+                                                            {% if risk_level == 'secure' %}
                                                                 {% set badge_color = 'success' %}
-                                                            {% elif risk_level == 'medium' %}
+                                                            {% elif risk_level == 'cautious' %}
                                                                 {% set badge_color = 'warning' %}
-                                                            {% elif risk_level == 'high' %}
+                                                            {% elif risk_level == 'unsafe' %}
                                                                 {% set badge_color = 'danger' %}
+                                                            {% elif risk_level == 'dangerous' %}
+                                                                {% set badge_color = 'dark text-danger' %}
                                                             {% else %}
                                                                 {% set badge_color = 'secondary' %}
                                                             {% endif %}
                                                             
                                                             <div class="d-flex align-items-center mb-2">
+                                                                {% if email.security_analysis.security_score is defined %}
+                                                                <div class="security-level-{{ risk_level }}">
+                                                                    <span class="security-score">{{ email.security_analysis.security_score | round(1) }}</span>
+                                                                </div>
+                                                                {% endif %}
                                                                 <span class="me-2">Risk Level:</span>
                                                                 <span class="badge bg-{{ badge_color }}">{{ email.security_analysis.risk_level }}</span>
                                                             </div>
