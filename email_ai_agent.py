@@ -4,6 +4,7 @@ This module creates an AI agent using LangChain and LangGraph to analyze emails
 for security concerns, replacing the simple rule-based detection with LLM-powered analysis.
 """
 import os
+import time
 import logging
 from typing import Dict, List, Any, TypedDict, Optional
 
@@ -23,15 +24,8 @@ class EmailAgentState(TypedDict):
     security_analysis: Optional[Dict[str, Any]]
 
 # Initialize the OpenAI model - GPT-4o Mini
-try:
-    model = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.0,  # Keep it deterministic for security analysis
-        request_timeout=20.0,  # Set a reasonable timeout
-    )
-except Exception as e:
-    logger.error(f"Error initializing OpenAI model: {str(e)}")
-    model = None
+# We'll initialize this lazily later to avoid startup errors
+model = None
 
 # Define the email analysis prompt template
 EMAIL_ANALYSIS_PROMPT = """
@@ -332,6 +326,36 @@ except ValueError as e:
     email_agent = None
 
 
+def _initialize_openai_model():
+    """
+    Lazily initialize the OpenAI model only when needed.
+    This helps prevent startup errors and timeouts.
+    
+    Returns:
+        True if initialization succeeded, False otherwise
+    """
+    global model
+    
+    if model is not None:
+        return True
+    
+    # Only initialize if not already done
+    try:
+        from langchain_openai import ChatOpenAI
+        
+        model = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.0,  # Keep it deterministic for security analysis
+            request_timeout=30.0,  # Increased timeout
+            max_retries=2,  # Add retries for transient errors
+        )
+        logger.info("Successfully initialized OpenAI model")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize OpenAI model: {str(e)}")
+        return False
+
+
 def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyze an email for security concerns using the AI agent.
@@ -342,13 +366,21 @@ def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dictionary with security analysis results
     """
-    if email_agent is None:
+    # Initialize the model
+    model_initialized = _initialize_openai_model()
+    
+    if not model_initialized or email_agent is None:
         # Fallback to the original rule-based analysis if agent initialization failed
         from email_security import analyze_email_security as rule_based_analysis
         return rule_based_analysis(email)
     
-    analyzed_email = email_agent.analyze_email(email)
-    return analyzed_email.get("security_analysis", {})
+    try:
+        analyzed_email = email_agent.analyze_email(email)
+        return analyzed_email.get("security_analysis", {})
+    except Exception as e:
+        logger.error(f"Error in AI email analysis, falling back to rule-based: {str(e)}")
+        from email_security import analyze_email_security as rule_based_analysis
+        return rule_based_analysis(email)
 
 
 def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -361,9 +393,34 @@ def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Returns:
         List of emails with security analysis added
     """
-    if email_agent is None:
+    # Initialize the model
+    model_initialized = _initialize_openai_model()
+    
+    if not model_initialized or email_agent is None:
         # Fallback to the original rule-based analysis if agent initialization failed
         from email_security import batch_analyze_emails as rule_based_batch_analysis
         return rule_based_batch_analysis(emails)
     
-    return email_agent.batch_analyze_emails(emails)
+    try:
+        # Process emails in batches to avoid long-running operations
+        analyzed_emails = []
+        batch_size = 3  # Process in small batches to avoid timeouts
+        
+        for i in range(0, len(emails), batch_size):
+            batch = emails[i:i+batch_size]
+            try:
+                analyzed_batch = email_agent.batch_analyze_emails(batch)
+                analyzed_emails.extend(analyzed_batch)
+                # Add a small delay between batches to avoid rate limits
+                time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Error analyzing batch {i//batch_size + 1}, falling back to rule-based: {str(e)}")
+                from email_security import batch_analyze_emails as rule_based_batch_analysis
+                analyzed_batch = rule_based_batch_analysis(batch)
+                analyzed_emails.extend(analyzed_batch)
+        
+        return analyzed_emails
+    except Exception as e:
+        logger.error(f"Error in AI email batch analysis, falling back to rule-based: {str(e)}")
+        from email_security import batch_analyze_emails as rule_based_batch_analysis
+        return rule_based_batch_analysis(emails)
