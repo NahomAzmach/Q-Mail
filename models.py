@@ -52,6 +52,37 @@ class Email(db.Model):
         }
 
 
+class TextMessage(db.Model):
+    """Model to store individual text messages for analysis."""
+    __tablename__ = 'text_messages'
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    content = Column(Text, nullable=False)
+    sender = Column(String(255))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Store analysis results
+    security_score = Column(Integer)
+    risk_level = Column(String(50))
+    explanation = Column(Text)
+    
+    # Relationship
+    user = relationship("User", back_populates="text_messages")
+    
+    def __repr__(self):
+        return f"<TextMessage(id={self.id}, risk_level={self.risk_level})>"
+    
+    def to_dict(self):
+        """Convert to dictionary format for analysis."""
+        return {
+            'id': self.id,
+            'content': self.content,
+            'sender': self.sender,
+            'created_at': self.created_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+
+
 class User(UserMixin, db.Model):
     """User model for authentication."""
     __tablename__ = 'users'
@@ -61,6 +92,9 @@ class User(UserMixin, db.Model):
     email = Column(String(120), unique=True, nullable=False)
     profile_pic = Column(String(255))
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    text_messages = relationship("TextMessage", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

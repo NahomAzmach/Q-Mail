@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Message Analyzer</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h1 class="h3 mb-0">Text Message Analyzer</h1>
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope me-1" viewBox="0 0 16 16">
+                                <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/>
+                            </svg>
+                            Email Analyzer
+                        </a>
+                    </div>
+                    <div class="card-body">
+                        <p class="card-text">Analyze suspicious text messages for security threats such as phishing, scams, or other risks.</p>
+                        
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <form action="{{ url_for('analyze_text') }}" method="post" class="mb-4">
+                            <div class="mb-3">
+                                <label for="sender" class="form-label">Sender (optional)</label>
+                                <input type="text" class="form-control" id="sender" name="sender" placeholder="Phone number or contact name">
+                                <div class="form-text">If known, the sender's phone number or contact name.</div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="text_content" class="form-label">Text Message Content</label>
+                                <textarea class="form-control" id="text_content" name="text_content" rows="6" placeholder="Paste the suspicious text message here" required></textarea>
+                            </div>
+                            
+                            <div class="mb-3 form-check">
+                                <input type="checkbox" class="form-check-input" id="use_ai" name="use_ai" value="true" checked>
+                                <label class="form-check-label" for="use_ai">Use AI analysis</label>
+                                <div class="form-text">When enabled, uses advanced AI to analyze the text. Disable for a simpler rule-based analysis.</div>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Analyze Text</button>
+                        </form>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="h4 mb-0">About Text Analysis</h2>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="h5">How It Works</h3>
+                        <p>Our text analyzer uses advanced security techniques to evaluate suspicious text messages for:</p>
+                        <ul>
+                            <li><strong>Phishing Attempts:</strong> Messages trying to steal your personal information</li>
+                            <li><strong>Scam Detection:</strong> Fraudulent offers, fake prizes, or other common scams</li>
+                            <li><strong>Urgency Tactics:</strong> Messages creating false time pressure</li>
+                            <li><strong>Suspicious Links:</strong> Identification of potentially harmful URLs</li>
+                        </ul>
+                        
+                        <h3 class="h5">Privacy Note</h3>
+                        <p>All analysis is performed securely. We never store your text messages permanently unless you're logged in.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

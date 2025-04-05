@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from flask import render_template, request, session, flash, redirect, url_for
+from flask import render_template, request, session, flash, redirect, url_for, jsonify
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
@@ -9,13 +9,15 @@ from email_security import batch_analyze_emails as rule_based_analyze_emails
 from hybrid_ai_analyzer import batch_analyze_emails as full_ai_analyze_emails
 # Import the headers-only AI analyzer for privacy-focused analysis
 from headers_only_ai_analyzer import batch_analyze_emails as headers_only_ai_analyze_emails
+# Import text message analyzer
+import text_analyzer
 from flask_login import login_required, logout_user, current_user, login_user
 
 # Import the database and app setup from the new module
 from db_setup import app, db, login_manager, logger
 
 # Import models and create tables
-from models import EmailSession, Email, User
+from models import EmailSession, Email, User, TextMessage
 
 with app.app_context():
     db.create_all()
@@ -341,6 +343,85 @@ def logout():
     
     flash('Logged out successfully.', 'info')
     return redirect(url_for('index'))
+
+# Text Analyzer routes
+@app.route('/text_analyzer', methods=['GET'])
+def text_analyzer_page():
+    """Display the text analyzer page with input form."""
+    return render_template('text_analyzer.html')
+
+@app.route('/analyze_text', methods=['POST'])
+def analyze_text():
+    """Analyze submitted text for security concerns."""
+    text_content = request.form.get('text_content')
+    sender = request.form.get('sender', '')
+    use_ai = request.form.get('use_ai', 'true').lower() == 'true'
+    
+    if not text_content:
+        flash('Text content is required.', 'danger')
+        return redirect(url_for('text_analyzer_page'))
+    
+    try:
+        # Save the text message to database
+        text_message = TextMessage(
+            content=text_content,
+            sender=sender,
+            user_id=current_user.id if current_user.is_authenticated else None
+        )
+        db.session.add(text_message)
+        db.session.flush()  # Generate ID
+        
+        # Analyze the text
+        analysis = text_analyzer.analyze_text(text_content, sender, use_ai)
+        
+        # Store analysis results
+        text_message.security_score = analysis.get('security_score')
+        text_message.risk_level = analysis.get('risk_level')
+        text_message.explanation = analysis.get('explanation')
+        
+        # Commit to database
+        db.session.commit()
+        
+        # Store the text message ID in session
+        session['text_message_id'] = text_message.id
+        
+        # Add analysis to the result
+        analysis['id'] = text_message.id
+        analysis['content'] = text_content
+        analysis['sender'] = sender
+        
+        return render_template('text_analysis_result.html', analysis=analysis, use_ai=use_ai)
+        
+    except Exception as e:
+        logger.error(f"Error in text analysis: {str(e)}")
+        flash(f"An error occurred during analysis: {str(e)}", 'danger')
+        return redirect(url_for('text_analyzer_page'))
+
+@app.route('/api/analyze_text', methods=['POST'])
+def api_analyze_text():
+    """API endpoint to analyze text and return JSON results."""
+    data = request.get_json()
+    
+    if not data or 'text' not in data:
+        return jsonify({'error': 'Text content is required'}), 400
+    
+    text_content = data.get('text')
+    sender = data.get('sender', '')
+    use_ai = data.get('use_ai', True)
+    
+    try:
+        # Analyze the text
+        analysis = text_analyzer.analyze_text(text_content, sender, use_ai)
+        
+        # Add the text content to the response
+        analysis['content'] = text_content
+        analysis['sender'] = sender
+        
+        return jsonify(analysis)
+        
+    except Exception as e:
+        logger.error(f"Error in API text analysis: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
