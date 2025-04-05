@@ -64,12 +64,12 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
         1. Does the sender look legitimate? Check the domain and sender details.
         2. Is the content suspicious with urgent calls to action, requests for sensitive information, or unusual language?
         3. Are there suspicious patterns like urgent requests, fear tactics, grammatical errors, or unusual requests?
-        4. What is the overall risk level (Low, Medium, High) and why?
+        4. What is the overall security level (Secure, Cautious, Unsafe, Dangerous) and why?
         
         Return your analysis in a structured JSON format with these keys:
         - "is_trusted_sender": true/false based on sender legitimacy
         - "suspicious_patterns_detected": list of specific suspicious patterns found (empty if none)
-        - "risk_level": "Low", "Medium", or "High"
+        - "risk_level": "Secure", "Cautious", "Unsafe", or "Dangerous"
         - "explanation": detailed reasoning for your assessment
         - "recommendations": suggested actions for the recipient
         """

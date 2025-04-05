@@ -258,13 +258,20 @@ def calculate_risk_level(
         elif element["type"] == "grammatical_errors":
             risk_score += 20
     
-    # Determine risk level
-    if risk_score >= 70:
-        return "High"
-    elif risk_score >= 40:
-        return "Medium"
+    # Convert risk score to a 0-10 scale
+    # Higher risk_score means more suspicious, so we invert it for our 0-10 scale
+    # where 10 is most secure
+    security_score = max(0, min(10, 10 - (risk_score / 10)))
+    
+    # Determine risk level based on the new scale
+    if security_score >= 8:
+        return "Secure"
+    elif security_score >= 5:
+        return "Cautious" 
+    elif security_score >= 2:
+        return "Unsafe"
     else:
-        return "Low"
+        return "Dangerous"
 
 def generate_recommendations(risk_level: str, suspicious_elements: List[Dict[str, str]]) -> str:
     """
@@ -280,19 +287,26 @@ def generate_recommendations(risk_level: str, suspicious_elements: List[Dict[str
     recommendations = []
     
     # Base recommendations by risk level
-    if risk_level == "High":
+    if risk_level == "Dangerous":
+        recommendations.append("Do not respond to this email or click any links it contains")
+        recommendations.append("Report this email as phishing to your email provider immediately")
+        recommendations.append("If you've clicked any links or provided information, change your passwords immediately")
+        recommendations.append("This email shows strong indicators of being a phishing attempt")
+    
+    elif risk_level == "Unsafe":
         recommendations.append("Do not respond to this email or click any links it contains")
         recommendations.append("Consider reporting this email as phishing to your email provider")
-        recommendations.append("If you've clicked any links or provided information, change your passwords immediately")
+        recommendations.append("Contact the sender through a different, verified channel if you need to confirm")
     
-    elif risk_level == "Medium":
+    elif risk_level == "Cautious":
         recommendations.append("Exercise caution with this email")
         recommendations.append("Do not click on links or download attachments unless you're certain they're legitimate")
-        recommendations.append("Contact the sender through a known, trusted channel to verify this communication")
+        recommendations.append("Contact the sender through a known, trusted channel to verify this communication if unsure")
     
-    else:  # Low
-        recommendations.append("Appears relatively safe, but always maintain caution")
-        recommendations.append("Verify the sender's identity if there's any doubt")
+    else:  # Secure
+        recommendations.append("This email appears to be legitimate")
+        recommendations.append("Follow standard security practices when interacting with this email")
+        recommendations.append("Always verify the sender's identity if there's any doubt")
     
     # Add specific recommendations based on findings
     for element in suspicious_elements:

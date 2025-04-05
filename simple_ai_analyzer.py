@@ -71,7 +71,7 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
         Return your analysis in a structured JSON format with these keys:
         - "is_trusted_sender": true/false based on sender legitimacy
         - "suspicious_patterns_detected": list of specific suspicious patterns found (empty if none)
-        - "risk_level": "Low", "Medium", or "High"
+        - "risk_level": "Secure", "Cautious", "Unsafe", or "Dangerous"
         - "explanation": detailed reasoning for your assessment
         - "recommendations": suggested actions for the recipient
         """

@@ -32,6 +32,33 @@
             font-size: 0.8rem;
             margin-left: 0.5rem;
         }
+        .security-score {
+            font-weight: bold;
+            font-size: 1rem;
+            position: relative;
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
+            line-height: 2rem;
+            text-align: center;
+            border-radius: 50%;
+            color: white;
+            margin-right: 0.5rem;
+        }
+        .security-level-secure .security-score {
+            background-color: #28a745;
+        }
+        .security-level-cautious .security-score {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .security-level-unsafe .security-score {
+            background-color: #dc3545;
+        }
+        .security-level-dangerous .security-score {
+            background-color: #343a40;
+            border: 1px solid #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -133,12 +160,14 @@
                                                     </div>
                                                     {% if email.security_analysis %}
                                                         {% set risk_level = email.security_analysis.risk_level | lower %}
-                                                        {% if risk_level == 'low' %}
+                                                        {% if risk_level == 'secure' %}
                                                             {% set badge_color = 'success' %}
-                                                        {% elif risk_level == 'medium' %}
+                                                        {% elif risk_level == 'cautious' %}
                                                             {% set badge_color = 'warning' %}
-                                                        {% elif risk_level == 'high' %}
+                                                        {% elif risk_level == 'unsafe' %}
                                                             {% set badge_color = 'danger' %}
+                                                        {% elif risk_level == 'dangerous' %}
+                                                            {% set badge_color = 'dark text-danger' %}
                                                         {% else %}
                                                             {% set badge_color = 'secondary' %}
                                                         {% endif %}
