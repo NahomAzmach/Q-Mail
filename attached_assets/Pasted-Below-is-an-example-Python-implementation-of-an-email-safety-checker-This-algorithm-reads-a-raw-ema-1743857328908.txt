@@ -1,0 +1,204 @@
+Below is an example Python implementation of an email safety checker. This algorithm reads a raw email message, parses its headers and body, and then runs through several checks such as sender verification, authentication header presence, suspicious keyword scanning, link validation, and attachment safety. You can further customize the safe domains, suspicious keywords, and allowed attachment types as needed.
+
+import email
+import re
+
+class EmailSafetyChecker:
+    def __init__(self, safe_domains=None, suspicious_keywords=None, safe_attachment_types=None):
+        # List of trusted sender domains
+        self.safe_domains = safe_domains or ['example.com', 'trusted.com']
+        # List of keywords commonly found in phishing/spam emails
+        self.suspicious_keywords = suspicious_keywords or ['urgent', 'winner', 'prize', 'free', 'click here']
+        # List of allowed attachment MIME types (adjust as needed)
+        self.safe_attachment_types = safe_attachment_types or ['application/pdf', 'image/jpeg', 'image/png']
+
+    def parse_email(self, raw_email):
+        """
+        Parse a raw email string into an email.message.Message object.
+        """
+        msg = email.message_from_string(raw_email)
+        return msg
+
+    def check_sender(self, msg):
+        """
+        Validate if the sender's domain is in the safe list.
+        """
+        sender = msg.get('From', '')
+        # Extract email address from string (e.g., "Name <email@example.com>")
+        match = re.search(r'<([^>]+)>', sender)
+        if match:
+            email_address = match.group(1)
+        else:
+            email_address = sender.strip()
+        # Extract domain from email address
+        if '@' in email_address:
+            domain = email_address.split('@')[-1].strip().lower()
+        else:
+            domain = ''
+        # Check if the domain is trusted
+        if domain in self.safe_domains:
+            return True, domain
+        else:
+            return False, domain
+
+    def check_authentication(self, msg):
+        """
+        Check for authentication headers such as SPF, DKIM, or DMARC.
+        """
+        spf = msg.get('Received-SPF', '')
+        dkim = msg.get('DKIM-Signature', '')
+        auth_results = msg.get('Authentication-Results', '')
+        # If any of these headers exist, assume some level of authentication is in place.
+        return bool(spf or dkim or auth_results)
+
+    def check_keywords(self, msg):
+        """
+        Search the email subject and body for suspicious keywords.
+        Returns a tuple: (is_safe, total_keyword_count).
+        """
+        subject = msg.get('Subject', '').lower()
+        keyword_count = 0
+        for keyword in self.suspicious_keywords:
+            if keyword in subject:
+                keyword_count += 1
+
+        body = ""
+        # Get plain text body from email
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == 'text/plain':
+                    try:
+                        body_content = part.get_payload(decode=True)
+                        if body_content:
+                            body += body_content.decode('utf-8', errors='ignore').lower()
+                    except Exception:
+                        continue
+        else:
+            try:
+                body_content = msg.get_payload(decode=True)
+                if body_content:
+                    body = body_content.decode('utf-8', errors='ignore').lower()
+            except Exception:
+                body = msg.get_payload()
+        for keyword in self.suspicious_keywords:
+            if keyword in body:
+                keyword_count += 1
+
+        # If multiple suspicious keywords are found, flag as unsafe.
+        return (keyword_count < 2), keyword_count
+
+    def check_links(self, msg):
+        """
+        Check HTML parts of the email for suspicious links.
+        For example, links that do not start with 'http' could be considered unsafe.
+        """
+        links_suspicious = False
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == 'text/html':
+                    try:
+                        html_content = part.get_payload(decode=True)
+                        if html_content:
+                            html_content = html_content.decode('utf-8', errors='ignore')
+                    except Exception:
+                        continue
+                    urls = re.findall(r'href=[\'"]?([^\'" >]+)', html_content)
+                    for url in urls:
+                        if not url.startswith('http'):
+                            links_suspicious = True
+                            break
+        else:
+            if msg.get_content_type() == 'text/html':
+                try:
+                    html_content = msg.get_payload(decode=True)
+                    if html_content:
+                        html_content = html_content.decode('utf-8', errors='ignore')
+                except Exception:
+                    html_content = msg.get_payload()
+                urls = re.findall(r'href=[\'"]?([^\'" >]+)', html_content)
+                for url in urls:
+                    if not url.startswith('http'):
+                        links_suspicious = True
+                        break
+        return not links_suspicious
+
+    def check_attachments(self, msg):
+        """
+        Check attachments for potentially unsafe file types.
+        """
+        attachment_safe = True
+        for part in msg.walk():
+            content_disposition = part.get('Content-Disposition', '')
+            if content_disposition and 'attachment' in content_disposition.lower():
+                ctype = part.get_content_type()
+                if ctype not in self.safe_attachment_types:
+                    attachment_safe = False
+                    break
+        return attachment_safe
+
+    def evaluate_email(self, raw_email):
+        """
+        Run all safety checks on the provided raw email and return a summary.
+        """
+        msg = self.parse_email(raw_email)
+        sender_safe, sender_domain = self.check_sender(msg)
+        auth_safe = self.check_authentication(msg)
+        keywords_safe, keyword_count = self.check_keywords(msg)
+        links_safe = self.check_links(msg)
+        attachments_safe = self.check_attachments(msg)
+
+        # Combine results: if any check fails, the email is considered unsafe.
+        if sender_safe and auth_safe and keywords_safe and links_safe and attachments_safe:
+            result = "Safe"
+        else:
+            result = "Unsafe"
+
+        return {
+            "result": result,
+            "sender_safe": sender_safe,
+            "sender_domain": sender_domain,
+            "auth_safe": auth_safe,
+            "keywords_safe": keywords_safe,
+            "keyword_count": keyword_count,
+            "links_safe": links_safe,
+            "attachments_safe": attachments_safe
+        }
+
+# Example usage:
+if __name__ == "__main__":
+    # A sample raw email (as a string) for testing purposes.
+    raw_email = """From: "Scam Sender" <scammer@malicious.com>
+To: user@example.com
+Subject: Urgent: Claim your prize now!
+Received-SPF: fail
+
+<html>
+<body>
+<p>Dear user,</p>
+<p>You have been selected as a winner! Click <a href="javascript:alert('Hacked')">here</a> to claim your prize.</p>
+</body>
+</html>
+"""
+    # Create an instance of the checker (customize safe_domains as needed)
+    checker = EmailSafetyChecker(safe_domains=['example.com', 'trusted.com'])
+    evaluation = checker.evaluate_email(raw_email)
+    
+    print("Email Evaluation:")
+    for key, value in evaluation.items():
+        print(f"{key}: {value}")
+How the Algorithm Works
+Email Parsing:
+The raw email string is parsed using Python’s built-in email library.
+Sender Check:
+The check_sender method extracts the sender’s email address and checks whether its domain is in a predefined list of trusted domains.
+Authentication Check:
+The check_authentication method verifies the presence of headers like SPF, DKIM, or DMARC.
+Keyword Check:
+The check_keywords method looks for suspicious words in the subject and body. If two or more instances of suspicious keywords are found, the email is flagged as unsafe.
+Link Check:
+The check_links method scans HTML parts for hyperlinks that do not follow a standard format (e.g., links not starting with http).
+Attachment Check:
+The check_attachments method reviews any attachments to ensure their MIME types are among the allowed safe types.
+Evaluation:
+All checks are combined in evaluate_email, which outputs a dictionary summarizing each check and an overall verdict of "Safe" or "Unsafe."
+This script provides a basic framework. For a production-level solution, you may want to integrate additional measures (like IP reputation lookups, more sophisticated NLP for content analysis, or a trained machine learning model for spam detection) and error handling as necessary.

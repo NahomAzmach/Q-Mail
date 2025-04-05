@@ -30,14 +30,24 @@ SUSPICIOUS_KEYWORDS = [
 
 # Common trusted email domains (for demonstration)
 TRUSTED_DOMAINS = [
-    "gmail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", 
-    "protonmail.com", "aol.com", "zoho.com", "mail.com", "yandex.com",
+    # Major email providers - ensure these are always trusted
+    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", 
+    "protonmail.com", "aol.com", "zoho.com", "mail.com", "yandex.com", "me.com",
+    
+    # Major tech companies
     "microsoft.com", "apple.com", "amazon.com", "facebook.com", "google.com",
-    "linkedin.com", "twitter.com", "instagram.com", "paypal.com", "chase.com",
-    "bankofamerica.com", "wellsfargo.com", "citibank.com", "capitalone.com",
-    "amex.com", "discover.com", "visa.com", "mastercard.com", "netflix.com",
-    "hulu.com", "spotify.com", "github.com", "gitlab.com", "stackoverflow.com",
-    "adobe.com", "dropbox.com", "salesforce.com", "slack.com", "zoom.us"
+    "linkedin.com", "twitter.com", "instagram.com", "paypal.com", 
+    
+    # Financial services
+    "chase.com", "bankofamerica.com", "wellsfargo.com", "citibank.com", "capitalone.com",
+    "amex.com", "discover.com", "visa.com", "mastercard.com", 
+    
+    # Popular services
+    "netflix.com", "hulu.com", "spotify.com", "github.com", "gitlab.com", "stackoverflow.com",
+    "adobe.com", "dropbox.com", "salesforce.com", "slack.com", "zoom.us",
+    
+    # Common TLDs for legitimate organizations
+    "edu", "gov", "mil"
 ]
 
 # Advanced detection patterns
@@ -74,17 +84,48 @@ SUSPICIOUS_PATTERNS = [
 URL_PATTERN = r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+'
 
 def extract_domain_from_email(email_address: str) -> str:
-    """Extract the domain from an email address."""
-    # Handle cases where email might contain a display name
-    match = re.search(r'<([^<>]+)>', email_address)
+    """
+    Extract the domain from an email address.
+    
+    This function handles various email formats including:
+    - Standard addresses: user@example.com
+    - Display name format: "User Name <user@example.com>"
+    - Multiple addresses: "primary@example.com, secondary@example.com"
+    
+    Args:
+        email_address: The email address string to process
+        
+    Returns:
+        The domain portion of the email address, or empty string if none found
+    """
+    if not email_address:
+        return ""
+    
+    # Handle cases where email might contain a display name with angle brackets
+    match = re.search(r'<([^<>]+@[^<>]+)>', email_address)
     if match:
         email_address = match.group(1)
     
+    # Handle cases with multiple email addresses (use the first one)
+    if ',' in email_address:
+        email_address = email_address.split(',')[0].strip()
+    
+    # Clean up any remaining quotes or extra characters
+    email_address = email_address.strip('"\'')
+    
     # Extract domain using regex
-    match = re.search(r'@([^@]+)$', email_address)
+    match = re.search(r'@([^@\s]+)$', email_address)
     
     if match:
-        return match.group(1).lower()
+        domain = match.group(1).lower()
+        # Some additional cleaning in case of trailing punctuation
+        domain = domain.rstrip('.')
+        return domain
+    
+    # If we got this far and still haven't found a domain,
+    # check if the entire string might be a domain (no @ symbol)
+    if '.' in email_address and '@' not in email_address:
+        return email_address.lower()
     
     return ""
 
@@ -206,26 +247,32 @@ def check_email_content(subject: str, body: str) -> List[Dict[str, str]]:
         r'\b(?:a)\s+(?:a|e|i|o|u)\b',  # Article errors
         r'\b(?:is|are|was|were)\s+(?:is|are|was|were)\b',  # Double verbs
         r'\b(?:the|a|an)\s+(?:the|a|an)\b',  # Double articles
-        r'(?<!\.)(?<!\?)\s+[a-z]',  # Capitalization errors after periods
         r'\b(?:i|we|they|he|she)\s+(?:is|has|have|am)\s+(?:is|has|have|am)\b'  # Verb agreement errors
     ]
     
-    for pattern in grammar_patterns:
-        matches = re.findall(pattern, body)
-        grammatical_errors += len(matches)
-    
-    if grammatical_errors > 3:
-        suspicious_elements.append({
-            "type": "grammatical_errors",
-            "details": f"Found {grammatical_errors} potential grammatical errors",
-            "significance": "High number of grammatical errors is common in phishing emails"
-        })
+    # Only check for grammatical errors if the body has enough content
+    if len(body) > 100:  # Only check substantial emails
+        for pattern in grammar_patterns:
+            matches = re.findall(pattern, body)
+            grammatical_errors += len(matches)
+        
+        # Calculate error density (errors per character)
+        error_density = grammatical_errors / max(1, len(body)) * 1000
+        
+        # Only flag if the error density is high enough (more than 1 error per 1000 chars)
+        if error_density > 1.0 and grammatical_errors > 3:
+            suspicious_elements.append({
+                "type": "grammatical_errors",
+                "details": f"Found {grammatical_errors} potential grammatical errors",
+                "significance": "High density of grammatical errors is common in phishing emails"
+            })
     
     return suspicious_elements
 
 def calculate_risk_level(
     is_trusted_domain: bool,
-    suspicious_elements: List[Dict[str, Any]]
+    suspicious_elements: List[Dict[str, Any]],
+    sender_domain: str = ""
 ) -> Tuple[str, float]:
     """
     Calculate the overall risk level based on analysis results.
@@ -233,35 +280,71 @@ def calculate_risk_level(
     Args:
         is_trusted_domain: Whether the sender domain is trusted
         suspicious_elements: List of detected suspicious elements
+        sender_domain: The sender's domain (for additional checks)
         
     Returns:
-        Risk level as string ("Low", "Medium", or "High")
+        Risk level as string and a security score (10 being most secure)
     """
-    # Start with base score
+    # Start with base score - assume neutral initially
     risk_score = 0
     
-    # Adjust for trusted domain
-    if not is_trusted_domain:
-        risk_score += 30
+    # Major email providers get a strong trust bonus
+    major_email_providers = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", 
+                             "yahoo.com", "icloud.com", "protonmail.com"]
+    
+    # If it's a trusted domain, subtract from risk score (improves security score)
+    if is_trusted_domain:
+        # Give major providers a stronger bonus
+        if sender_domain in major_email_providers:
+            risk_score -= 20  # Higher trust for major email providers
+        else:
+            risk_score -= 10  # Standard trust for other trusted domains
+    else:
+        # Unknown domains start with a penalty
+        risk_score += 20
+    
+    # Check for suspicious keywords - if keywords are common security terms, reduce penalty
+    common_security_terms = ["security", "alert", "notification", "update", "verify"]
+    
+    # Track whether we've applied security term adjustment
+    security_term_adjusted = False
     
     # Adjust for suspicious elements
     for element in suspicious_elements:
         if element["type"] == "suspicious_keywords":
-            risk_score += min(element["count"] * 5, 30)
+            keyword_penalty = min(element["count"] * 5, 30)
+            
+            # Reduce penalty if keywords contain security terms and we haven't adjusted yet
+            if not security_term_adjusted and is_trusted_domain:
+                for term in common_security_terms:
+                    if term in element.get("details", "").lower():
+                        keyword_penalty = max(0, keyword_penalty - 15)  # Reduce penalty
+                        security_term_adjusted = True
+                        break
+                        
+            risk_score += keyword_penalty
             
         elif element["type"] == "suspicious_patterns":
-            risk_score += min(len(element.get("patterns", [])) * 10, 40)
+            risk_score += min(len(element.get("patterns", [])) * 8, 30)  # Reduced impact
             
         elif element["type"] == "suspicious_urls":
             risk_score += min(len(element.get("urls", [])) * 15, 50)
             
         elif element["type"] == "grammatical_errors":
-            risk_score += 20
+            # If trusted domain, reduce grammar error penalty (legitimate emails can have errors too)
+            if is_trusted_domain:
+                risk_score += 10  # Reduced penalty for trusted domains
+            else:
+                risk_score += 20
     
     # Convert risk score to a 0-10 scale
     # Higher risk_score means more suspicious, so we invert it for our 0-10 scale
     # where 10 is most secure
     security_score = max(0, min(10, 10 - (risk_score / 10)))
+    
+    # For trusted domains like Gmail, ensure minimum security score
+    if sender_domain in major_email_providers and security_score < 7:
+        security_score = max(security_score, 7.0)  # Ensure major providers get at least 7/10
     
     # Determine risk level based on the new scale
     if security_score >= 8:
@@ -362,7 +445,7 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
                 suspicious_patterns.append(f"Multiple grammatical errors detected ({element['details']})")
         
         # Calculate risk level and security score
-        risk_level_and_score = calculate_risk_level(is_trusted_domain, suspicious_elements)
+        risk_level_and_score = calculate_risk_level(is_trusted_domain, suspicious_elements, sender_domain)
         risk_level, security_score = risk_level_and_score  # Unpack the tuple
         
         # Generate explanation
