@@ -102,6 +102,9 @@ def fetch():
         
         # Store only the session ID in the session cookie
         session['email_session_id'] = email_session.id
+        # Set default to use AI but with headers-only (toggle OFF)
+        session['use_ai'] = 'true'
+        session['full_content'] = 'false'
         
         return redirect(url_for('results'))
         
@@ -117,8 +120,13 @@ def results():
     session_id = session.get('email_session_id')
     
     # Check if we're being redirected with the 'ai' and 'full_content' flags
-    use_ai = request.args.get('ai', 'false').lower() == 'true'
-    full_content = request.args.get('full_content', 'false').lower() == 'true'
+    # If not provided in URL, check session for previous preference
+    use_ai = request.args.get('ai', session.get('use_ai', 'false')).lower() == 'true'
+    full_content = request.args.get('full_content', session.get('full_content', 'false')).lower() == 'true'
+    
+    # Save these preferences to session for future page loads
+    session['use_ai'] = str(use_ai).lower()
+    session['full_content'] = str(full_content).lower()
     
     if not session_id:
         flash('No email results found. Please fetch emails first.', 'warning')
@@ -180,6 +188,29 @@ def results():
     
     return render_template('results.html', results=results)
 
+@app.route('/toggle_ai', methods=['GET'])
+def toggle_ai():
+    """Toggle between headers-only and full content AI analysis."""
+    session_id = session.get('email_session_id')
+    
+    if not session_id:
+        flash('No emails to analyze. Please fetch emails first.', 'warning')
+        return redirect(url_for('index'))
+    
+    # Get current state from query params or from session
+    current_full_content = request.args.get('full_content', 
+                                          session.get('full_content', 'false')) == 'true'
+    
+    # Toggle the state
+    new_full_content = not current_full_content
+    
+    # Remember the setting in session
+    session['full_content'] = str(new_full_content).lower()
+    
+    # Redirect to results with new toggle state
+    # We always use AI when toggling (ai=true)
+    return redirect(url_for('results', ai='true', full_content=str(new_full_content).lower()))
+
 @app.route('/analyze_with_ai', methods=['GET'])
 def analyze_with_ai():
     """Run headers-only AI analysis on already fetched emails."""
@@ -188,6 +219,9 @@ def analyze_with_ai():
     if not session_id:
         flash('No emails to analyze. Please fetch emails first.', 'warning')
         return redirect(url_for('index'))
+    
+    # Update the session to remember this setting
+    session['full_content'] = 'false'
     
     return redirect(url_for('results', ai='true', full_content='false'))
 
@@ -199,6 +233,9 @@ def analyze_with_full_ai():
     if not session_id:
         flash('No emails to analyze. Please fetch emails first.', 'warning')
         return redirect(url_for('index'))
+    
+    # Update the session to remember this setting
+    session['full_content'] = 'true'
     
     return redirect(url_for('results', ai='true', full_content='true'))
 
