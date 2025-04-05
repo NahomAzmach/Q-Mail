@@ -173,20 +173,30 @@ def get_oauth_flow():
     # Determine the redirect URI based on the environment
     global REDIRECT_URI
     if not REDIRECT_URI:
-        replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
-        if replit_domain:
-            # Use the exact domain from environment
-            # If it contains multiple domains (comma-separated), take the first one
-            if ',' in replit_domain:
-                replit_domain = replit_domain.split(',')[0].strip()
-            
-            REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
-            print(f"DEBUG - Using redirect URI: {REDIRECT_URI}")
-            print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
+        # First try to get the domain from the request if available
+        if request and hasattr(request, 'host'):
+            host = request.host
+            scheme = request.scheme
+            REDIRECT_URI = f"{scheme}://{host}/google_login/callback"
+            print(f"DEBUG - Using host-based redirect URI: {REDIRECT_URI}")
         else:
-            # Fallback to localhost
-            REDIRECT_URI = "http://localhost:5000/google_login/callback"
-            print("DEBUG - No Replit domain found, using localhost redirect URI")
+            replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
+            if replit_domain:
+                # Use the exact domain from environment
+                # If it contains multiple domains (comma-separated), take the first one
+                if ',' in replit_domain:
+                    replit_domain = replit_domain.split(',')[0].strip()
+                
+                REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
+                print(f"DEBUG - Using environment-based redirect URI: {REDIRECT_URI}")
+                print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
+            else:
+                # Fallback to localhost
+                REDIRECT_URI = "http://localhost:5000/google_login/callback"
+                print("DEBUG - No Replit domain found, using localhost redirect URI")
+    
+    print(f"FINAL REDIRECT URI: {REDIRECT_URI}")
+    print("Make sure this EXACT URI is registered in your Google Cloud Console!")
     
     # Get client ID and client secret from environment variables
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")

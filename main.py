@@ -52,12 +52,13 @@ app.register_blueprint(google_auth)
 
 @app.route('/', methods=['GET'])
 def index():
-    """Home page to redirect to Google login."""
-    if current_user.is_authenticated and 'credentials' in session:
-        # Already logged in and has credentials, redirect to fetch emails
+    """Home page showing the Google login button."""
+    # Check if the user explicitly requested to go to the results page
+    if request.args.get('action') == 'results' and current_user.is_authenticated and 'credentials' in session:
+        # Only redirect to fetch emails if explicitly requested
         return redirect(url_for('fetch_google_emails'))
     
-    # Otherwise, show the home page with Google login button
+    # Show the home page with Google login button
     return render_template('index.html')
 
 @app.route('/results', methods=['GET'])
