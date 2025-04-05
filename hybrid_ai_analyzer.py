@@ -1,0 +1,233 @@
+"""
+Hybrid AI Email Analyzer - Combines rule-based analysis with OpenAI integration.
+
+This module provides a hybrid approach that first attempts to use OpenAI for analysis,
+and falls back to an advanced rule-based system if the API is unavailable or fails.
+This ensures reliable operation while still utilizing AI capabilities when possible.
+"""
+
+import os
+import time
+import logging
+import json
+import re
+import requests
+import urllib.parse
+from typing import Dict, List, Any, Tuple, Optional
+
+# Import standalone analyzer for fallback
+from standalone_ai_analyzer import (
+    analyze_email_with_rules, 
+    batch_analyze_emails_with_rules,
+    extract_domain_from_email
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analyze a single email using OpenAI API directly.
+    
+    Args:
+        email_data: Dictionary containing email data
+    
+    Returns:
+        Dictionary with security analysis results
+    """
+    try:
+        # Check if OpenAI API key is available
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            logger.warning("OPENAI_API_KEY not found in environment variables")
+            return analyze_email_with_rules(email_data)
+        
+        # Get email details
+        sender = email_data.get('from', '')
+        subject = email_data.get('subject', '')
+        body = email_data.get('body', '')
+        
+        # Create prompt for OpenAI
+        prompt = f"""
+        You are an expert email security analyst with deep knowledge of phishing tactics and email security threats.
+        Analyze the following email for any signs of phishing, scams, or security concerns.
+        
+        EMAIL DETAILS:
+        - From: {sender}
+        - Subject: {subject}
+        - Body:
+        {body}
+        
+        Analyze this email's security aspects by considering:
+        1. Does the sender look legitimate? Check the domain and sender details.
+        2. Is the content suspicious with urgent calls to action, requests for sensitive information, or unusual language?
+        3. Are there suspicious patterns like urgent requests, fear tactics, grammatical errors, or unusual requests?
+        4. What is the overall risk level (Low, Medium, High) and why?
+        
+        Return your analysis in a structured JSON format with these keys:
+        - "is_trusted_sender": true/false based on sender legitimacy
+        - "suspicious_patterns_detected": list of specific suspicious patterns found (empty if none)
+        - "risk_level": "Low", "Medium", or "High"
+        - "explanation": detailed reasoning for your assessment
+        - "recommendations": suggested actions for the recipient
+        """
+        
+        # Direct API call using requests instead of the OpenAI client
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        payload = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.0
+        }
+        
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=10  # Set a shorter timeout to avoid server timeouts
+        )
+        
+        if response.status_code != 200:
+            logger.warning(f"OpenAI API returned status code {response.status_code}")
+            return analyze_email_with_rules(email_data)
+        
+        response_json = response.json()
+        analysis_text = response_json["choices"][0]["message"]["content"]
+        
+        # Parse JSON from response
+        json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)
+        
+        if json_match:
+            try:
+                analysis = json.loads(json_match.group(0))
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse JSON from OpenAI response")
+                return analyze_email_with_rules(email_data)
+        else:
+            # Try to parse as key-value pairs if no JSON is found
+            try:
+                analysis = {}
+                lines = analysis_text.split('\n')
+                for line in lines:
+                    if ':' in line:
+                        key, value = line.split(':', 1)
+                        key = key.strip().lower().replace(' ', '_')
+                        value = value.strip()
+                        if key == 'suspicious_patterns_detected' and value.startswith('[') and value.endswith(']'):
+                            # Try to parse as a list
+                            items = value[1:-1].split(',')
+                            analysis[key] = [item.strip().strip('"\'') for item in items if item.strip()]
+                        else:
+                            analysis[key] = value
+                
+                # If we still couldn't parse anything useful
+                if not analysis or 'risk_level' not in analysis:
+                    logger.warning("Could not extract structured data from OpenAI response")
+                    return analyze_email_with_rules(email_data)
+            except Exception:
+                logger.warning("Failed to parse key-value pairs from OpenAI response")
+                return analyze_email_with_rules(email_data)
+        
+        # Ensure required fields are present with proper types
+        if 'suspicious_patterns_detected' not in analysis or not isinstance(analysis['suspicious_patterns_detected'], list):
+            analysis['suspicious_patterns_detected'] = []
+        
+        for field in ['is_trusted_sender', 'risk_level', 'explanation', 'recommendations']:
+            if field not in analysis:
+                analysis[field] = "Not provided by analysis"
+        
+        # If is_trusted_sender is a string "true"/"false", convert to boolean
+        if isinstance(analysis.get('is_trusted_sender'), str):
+            analysis['is_trusted_sender'] = analysis['is_trusted_sender'].lower() == 'true'
+        
+        # Create security analysis result
+        security_analysis = {
+            "sender_domain": extract_domain_from_email(sender),
+            "is_trusted_domain": analysis.get("is_trusted_sender", False),
+            "suspicious_patterns": analysis.get("suspicious_patterns_detected", []),
+            "risk_level": analysis.get("risk_level", "Unknown"),
+            "explanation": analysis.get("explanation", ""),
+            "recommendations": analysis.get("recommendations", "")
+        }
+        
+        return security_analysis
+    
+    except Exception as e:
+        logger.error(f"Error in AI email analysis: {str(e)}")
+        # Fallback to rule-based analysis
+        return analyze_email_with_rules(email_data)
+
+def batch_analyze_emails_with_openai(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Analyze a batch of emails using OpenAI API.
+    
+    Args:
+        emails: List of email dictionaries
+    
+    Returns:
+        List of emails with security analysis added
+    """
+    try:
+        # Check if OpenAI API key is available
+        if not os.environ.get("OPENAI_API_KEY"):
+            logger.warning("OPENAI_API_KEY not found in environment variables")
+            return batch_analyze_emails_with_rules(emails)
+        
+        # Process emails one by one to avoid timeout issues
+        analyzed_emails = []
+        
+        for i, email in enumerate(emails):
+            try:
+                # Add security analysis to the email
+                security_analysis = analyze_email_with_openai(email)
+                email["security_analysis"] = security_analysis
+                analyzed_emails.append(email)
+                
+                # Add a small delay between API calls to avoid rate limits
+                if i < len(emails) - 1:
+                    time.sleep(0.5)
+                    
+            except Exception as e:
+                logger.error(f"Error analyzing email {i+1}: {str(e)}")
+                # Use rule-based analysis as fallback for this email
+                email["security_analysis"] = analyze_email_with_rules(email)
+                analyzed_emails.append(email)
+        
+        return analyzed_emails
+        
+    except Exception as e:
+        logger.error(f"Error in batch email analysis: {str(e)}")
+        # Fallback to rule-based analysis for all emails
+        return batch_analyze_emails_with_rules(emails)
+
+# Public functions to be used by the main application
+def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analyze an email for security concerns. 
+    Tries OpenAI first, falls back to rules-based if needed.
+    
+    Args:
+        email: Dictionary containing email data
+        
+    Returns:
+        Dictionary with security analysis results
+    """
+    return analyze_email_with_openai(email)
+
+def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Analyze a batch of emails for security concerns.
+    Tries OpenAI first, falls back to rules-based if needed.
+    
+    Args:
+        emails: List of email dictionaries
+        
+    Returns:
+        List of emails with security analysis added
+    """
+    return batch_analyze_emails_with_openai(emails)
