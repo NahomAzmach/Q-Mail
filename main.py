@@ -148,7 +148,7 @@ def results():
     # Import all analyzer modules at the beginning to avoid issues with fallback
     from email_security import batch_analyze_emails as rule_based_analyze_emails
     from headers_only_ai_analyzer import batch_analyze_emails as headers_only_ai_analyze_emails
-    from simple_ai_analyzer import batch_analyze_emails as full_ai_analyze_emails
+    from hybrid_ai_analyzer import batch_analyze_emails as full_ai_analyze_emails
     
     # Perform security analysis based on user settings
     try:
