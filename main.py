@@ -77,11 +77,98 @@ def oauth_setup():
     redirect_uri = f"http://{replit_domain}/google_login/callback"
     
     # Get client ID for display
-    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
     
-    return render_template('oauth_setup.html', 
-                          redirect_uri=redirect_uri,
-                          client_id=client_id)
+    # Create a simple HTML template directly as a string
+    html = f"""<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google OAuth Setup Instructions</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <style>
+        .code-block {{
+            background-color: #2c2c2c;
+            padding: 1rem;
+            border-radius: 4px;
+            font-family: monospace;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+        }}
+        .step {{
+            margin-bottom: 2rem;
+            border-left: 4px solid var(--bs-primary);
+            padding-left: 1rem;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-lg-8">
+                <div class="card border-info mb-4">
+                    <div class="card-header bg-info text-dark">
+                        <h2 class="h4 mb-0">Google OAuth Setup Instructions</h2>
+                    </div>
+                    <div class="card-body">
+                        <p class="lead">These instructions will help you properly configure Google OAuth for this application.</p>
+                        
+                        <div class="alert alert-warning">
+                            <strong>Problem:</strong> You're seeing a redirect_uri_mismatch or insecure_transport error because Google OAuth requires specific configuration.
+                        </div>
+                        
+                        <h4 class="mt-4 mb-3">Exact Redirect URI to Register:</h4>
+                        <div class="code-block mb-4 p-3">
+                            <strong>https://{replit_domain}/google_login/callback</strong>
+                        </div>
+                        
+                        <div class="step">
+                            <h5>Step 1: Go to Google Cloud Console</h5>
+                            <p>Open the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-info">Google Cloud Console Credentials page</a></p>
+                        </div>
+                        
+                        <div class="step">
+                            <h5>Step 2: Find your OAuth 2.0 Client ID</h5>
+                            <p>Locate your OAuth 2.0 Client ID {client_id if client_id else ""} and click the edit icon (pencil)</p>
+                        </div>
+                        
+                        <div class="step">
+                            <h5>Step 3: Add the Redirect URI</h5>
+                            <p>In the "Authorized redirect URIs" section, add the exact URI shown above</p>
+                            <p>Make sure to click "Save" after adding the URI</p>
+                            <div class="alert alert-info">
+                                <strong>Important:</strong> The URI must match EXACTLY, including the https:// prefix and /google_login/callback suffix
+                            </div>
+                        </div>
+                        
+                        <div class="step">
+                            <h5>Step 4: Enable the Gmail API</h5>
+                            <p>Go to the <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" class="text-info">Gmail API in the API Library</a></p>
+                            <p>Click "Enable" if it's not already enabled</p>
+                        </div>
+                        
+                        <div class="step">
+                            <h5>Step 5: Try Again</h5>
+                            <p>Return to the application and try logging in again</p>
+                        </div>
+
+                        <div class="alert alert-warning mt-4">
+                            <strong>Note:</strong> Replit generates a new domain each time the repl is started or reloaded. You may need to update the redirect URI in Google Cloud Console whenever the Replit URL changes.
+                        </div>
+
+                        <div class="text-center mt-4">
+                            <a href="/" class="btn btn-primary">Return to Home Page</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+    
+    return html
 
 @app.route('/results', methods=['GET'])
 def results():

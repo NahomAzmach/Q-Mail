@@ -12,6 +12,10 @@ from oauthlib.oauth2 import WebApplicationClient
 from main import db
 from models import User
 
+# This is required for working with Replit which uses HTTP instead of HTTPS in development
+# WARNING: This should NEVER be used in production!
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+
 # Configuration
 CLIENT_SECRETS_FILE = "client_secret.json"
 SCOPES = [
