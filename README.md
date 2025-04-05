@@ -1,3 +1,5 @@
+![QMail Logo](static/image.png)
+
 # QMail
 
 **QMail** is an advanced email analytics and security tool designed to monitor, filter, and analyze incoming emails. It integrates with popular email providers such as Gmail using robust authentication (including SSO) and modern threat detection techniques. QMail provides actionable insights into your email activity by identifying scams, phishing attempts, and malicious content—all while ensuring privacy through encryption and secure data handling.
