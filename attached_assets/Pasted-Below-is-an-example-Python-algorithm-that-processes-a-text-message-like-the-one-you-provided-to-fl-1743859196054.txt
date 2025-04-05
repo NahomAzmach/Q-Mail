@@ -1,0 +1,82 @@
+Below is an example Python algorithm that processes a text message (like the one you provided) to flag potentially sketchy emails before they reach the inbox. The algorithm uses heuristic checks for suspicious keywords and validates the URL against what you’d expect from an official source. In this example, since the email is purportedly from WSDOT, we assume that a legitimate link should come from the domain wsdot.wa.gov.
+
+import re
+
+def is_text_suspicious(text, safe_domain="wsdot.wa.gov", keyword_threshold=3):
+    """
+    Evaluate the safety of an email text.
+    
+    Parameters:
+        text (str): The email text to analyze.
+        safe_domain (str): Expected safe domain for links (e.g., WSDOT's official domain).
+        keyword_threshold (int): Number of suspicious keywords needed to flag the text.
+    
+    Returns:
+        bool: True if the text is flagged as suspicious, False otherwise.
+        dict: Detailed results from each check.
+    """
+    # Define a list of suspicious keywords/phrases
+    suspicious_keywords = [
+        'final notice', 'last chance', 'act immediately', 'immediate', 'urgent',
+        'failure to pay', 'suspension', 'impoundment', 'legal actions', 'wage garnishment'
+    ]
+    
+    # Check for suspicious keywords in the text
+    keyword_count = 0
+    for keyword in suspicious_keywords:
+        if keyword.lower() in text.lower():
+            keyword_count += 1
+
+    # Extract URLs from the text using regex
+    urls = re.findall(r'(https?://[^\s]+)', text)
+    url_flag = False
+    url_details = []
+    
+    for url in urls:
+        # Extract the domain from the URL
+        match = re.search(r'https?://([^/]+)', url)
+        domain = match.group(1).lower() if match else ''
+        url_details.append({"url": url, "domain": domain})
+        # If the domain doesn't match the expected safe domain, flag the URL as suspicious.
+        if safe_domain not in domain:
+            url_flag = True
+    
+    # Determine if text is suspicious:
+    # - If there are several suspicious keywords, or if at least one URL is flagged as suspicious.
+    suspicious = (keyword_count >= keyword_threshold) or url_flag
+
+    # Return the overall flag along with details of the checks
+    return suspicious, {
+        "suspicious_keyword_count": keyword_count,
+        "keywords_used": [kw for kw in suspicious_keywords if kw.lower() in text.lower()],
+        "urls_found": url_details,
+        "url_flagged": url_flag
+    }
+
+# Example sketchy email text:
+email_text = """
+[WSDOT Toll Alert] – FINAL Unpaid Toll Notice
+
+This is your FINAL official notice from the Washington State Department of Transportation (WSDOT) regarding an unpaid toll for your vehicle. You must settle the outstanding balance online within 24 hours using the link below. Failure to pay by the due date will result in immediate fines, escalating late fees, suspension of your vehicle registration through the DMV, potential vehicle impoundment, and aggressive legal actions, including court proceedings with significant financial penalties and possible wage garnishment.
+
+Pay now to avoid these severe consequences and protect your driving privileges!
+
+https://goodtogo.com-tollbillolav.xin/pay
+
+If the link fails, reply “Y” to retry, or copy and paste it into your browser. This is your LAST CHANCE—act immediately!
+"""
+
+# Run the check on the example text.
+flagged, details = is_text_suspicious(email_text)
+print("Is the email suspicious?", flagged)
+print("Detailed check results:")
+for key, value in details.items():
+    print(f"{key}: {value}")
+How the Algorithm Works
+Suspicious Keywords Check:
+The function counts occurrences of predefined phrases (like "FINAL notice", "last chance", "act immediately") in the email text. If the count meets or exceeds a threshold (set to 3 by default), it flags the text as suspicious.
+URL Validation:
+It extracts any URLs in the text using regular expressions and then checks if the domain of each URL contains the expected safe domain (in this case, wsdot.wa.gov). If any URL comes from a different domain, it is flagged as suspicious.
+Overall Decision:
+The email is flagged as suspicious if either the keyword count is high or if any URL does not match the safe domain.
+This heuristic-based algorithm provides an initial filter that can flag similar texts before they reach your inbox. You can further enhance this by incorporating more advanced checks (like NLP-based sentiment analysis or machine learning models) as needed.

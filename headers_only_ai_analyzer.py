@@ -30,6 +30,110 @@ from email_security import check_for_suspicious_patterns
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def check_for_sketchy_patterns(text_content: str, trusted_domains: List[str] = None) -> Dict[str, Any]:
+    """
+    Check for sketchy patterns using the enhanced algorithm.
+    
+    Args:
+        text_content: The text content to analyze
+        trusted_domains: List of domains that should be considered trusted
+        
+    Returns:
+        Dictionary with analysis results
+    """
+    # Define a list of suspicious keywords/phrases (enhanced from the provided algorithm)
+    suspicious_keywords = [
+        'final notice', 'last chance', 'act immediately', 'immediate attention', 'urgent action',
+        'failure to pay', 'suspension', 'impoundment', 'legal actions', 'wage garnishment',
+        'limited time', 'act now', 'expires soon', 'quickly', 'asap', 'emergency',
+        'important notice', 'warning', 'alert', 'account suspended', 'security alert',
+        'verify your account', 'confirm your identity', 'avoid penalties', 'prevent account closure',
+        'official notice', 'final warning'
+    ]
+    
+    # Set a reasonable threshold for how many keywords trigger a warning
+    keyword_threshold = 2
+    
+    # Set default trusted domains if none provided
+    if not trusted_domains:
+        trusted_domains = [
+            'gmail.com', 'google.com', 'apple.com', 'icloud.com', 'microsoft.com',
+            'outlook.com', 'yahoo.com', 'live.com', 'hotmail.com', 'aol.com',
+            'proton.me', 'protonmail.com', '.gov', '.edu'
+        ]
+    
+    # Check for suspicious keywords in the text
+    keyword_count = 0
+    found_keywords = []
+    for keyword in suspicious_keywords:
+        if keyword.lower() in text_content.lower():
+            keyword_count += 1
+            found_keywords.append(keyword)
+    
+    # Extract URLs from the text using regex
+    urls = re.findall(r'(https?://[^\s]+)', text_content)
+    url_flag = False
+    url_details = []
+    safe_urls = []
+    suspicious_urls = []
+    
+    for url in urls:
+        # Extract the domain from the URL
+        domain_match = re.search(r'https?://([^/]+)', url)
+        domain = domain_match.group(1).lower() if domain_match else ''
+        
+        # Check if domain is trusted
+        is_trusted = False
+        for trusted_domain in trusted_domains:
+            if trusted_domain in domain:
+                is_trusted = True
+                safe_urls.append(url)
+                break
+        
+        if not is_trusted:
+            url_flag = True
+            suspicious_urls.append(url)
+        
+        url_details.append({"url": url, "domain": domain, "is_trusted": is_trusted})
+    
+    # Calculate a security score based on findings
+    # Start with a neutral score of 5
+    security_score = 5.0
+    
+    # Keyword penalties
+    if keyword_count >= keyword_threshold:
+        # Subtract 0.5 points per keyword found, up to 3 points
+        security_score -= min(3.0, keyword_count * 0.5)
+    
+    # URL penalties
+    if url_flag:
+        # Subtract 1 point per suspicious URL, up to 4 points
+        security_score -= min(4.0, len(suspicious_urls) * 1.0)
+    
+    # Urgency score adjustment - additional penalty if keywords suggest urgent action
+    urgency_keywords = [
+        'urgent', 'immediately', 'emergency', 'act now', 'last chance',
+        'final', 'warning', 'limited time', 'expires soon'
+    ]
+    urgency_count = sum(1 for kw in urgency_keywords if kw.lower() in text_content.lower())
+    if urgency_count > 0:
+        security_score -= min(1.5, urgency_count * 0.5)
+    
+    # Determine if text is suspicious
+    suspicious = (keyword_count >= keyword_threshold) or url_flag
+    
+    # Return detailed results
+    return {
+        "is_suspicious": suspicious,
+        "security_score_adjustment": 5.0 - security_score,  # How many points to subtract
+        "suspicious_keyword_count": keyword_count,
+        "keywords_found": found_keywords,
+        "urls_found": url_details,
+        "suspicious_urls": suspicious_urls,
+        "safe_urls": safe_urls,
+        "suspicious_url_count": len(suspicious_urls)
+    }
+
 def hybrid_analyze_email(email_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Analyze email using both rules-based and AI analysis, but only send headers to AI.
@@ -44,23 +148,41 @@ def hybrid_analyze_email(email_data: Dict[str, Any]) -> Dict[str, Any]:
     # First, get rule-based analysis on headers and subject
     subject = email_data.get('subject', '')
     sender = email_data.get('from', '')
+    sender_domain = extract_domain_from_email(sender)
     
-    # Check for suspicious patterns in the subject line only
+    # Get list of trusted domains for our sketchy pattern detection
+    trusted_domains = [
+        'gmail.com', 'google.com', 'apple.com', 'icloud.com', 'microsoft.com',
+        'outlook.com', 'yahoo.com', 'live.com', 'hotmail.com', 'aol.com',
+        'proton.me', 'protonmail.com', '.gov', '.edu'
+    ]
+    
+    # Use our enhanced sketchy pattern detection on the subject line
+    # Convert trusted_domains list to non-None value to satisfy type checking
+    sketchy_analysis = check_for_sketchy_patterns(subject, trusted_domains or [])
+    
+    # Also check for simple suspicious patterns as a backup
     rule_based_suspicious_patterns = check_for_suspicious_patterns(subject, '')
     
     # Now get AI analysis on headers only
     ai_analysis = analyze_email_with_openai_headers_only(email_data)
     
     # Combine the analyses: We'll use AI analysis as base but adjust the security score
-    # based on rule-based findings, and add any suspicious patterns found
+    # based on enhanced pattern detection findings
     
     # Get original AI score
     ai_score = ai_analysis.get('security_score', 5.0)
     
-    # Adjust score based on subject pattern findings (if AI missed them)
-    # Each suspicious pattern reduces the score by 0.5 points, up to 2 points
-    pattern_penalty = min(len(rule_based_suspicious_patterns) * 0.5, 2.0)
-    adjusted_score = max(1.0, ai_score - pattern_penalty)
+    # Adjust score based on sketchy pattern findings
+    sketchy_score_penalty = sketchy_analysis.get("security_score_adjustment", 0)
+    
+    # If sketchy analysis found nothing but simple rule-based did, use rule-based penalty as backup
+    if sketchy_score_penalty == 0 and rule_based_suspicious_patterns:
+        pattern_penalty = min(len(rule_based_suspicious_patterns) * 0.5, 2.0)
+        adjusted_score = max(1.0, ai_score - pattern_penalty)
+    else:
+        # Apply sketchy analysis penalty
+        adjusted_score = max(1.0, ai_score - sketchy_score_penalty)
     
     # Update the AI analysis with our hybrid findings
     ai_analysis['security_score'] = adjusted_score
@@ -69,6 +191,14 @@ def hybrid_analyze_email(email_data: Dict[str, Any]) -> Dict[str, Any]:
     ai_suspicious_patterns = ai_analysis.get('suspicious_patterns', [])
     combined_patterns = list(ai_suspicious_patterns)
     
+    # Add patterns from sketchy analysis
+    if sketchy_analysis.get("keywords_found"):
+        keywords_found_str = ", ".join(sketchy_analysis["keywords_found"])
+        pattern_description = f"Suspicious keywords in subject: {keywords_found_str}"
+        if pattern_description not in combined_patterns:
+            combined_patterns.append(pattern_description)
+    
+    # Add patterns from simple pattern detection as backup
     for pattern in rule_based_suspicious_patterns:
         pattern_description = f"Suspicious pattern in subject: {pattern}"
         if pattern_description not in combined_patterns:
@@ -76,21 +206,31 @@ def hybrid_analyze_email(email_data: Dict[str, Any]) -> Dict[str, Any]:
     
     ai_analysis['suspicious_patterns'] = combined_patterns
     
-    # Update risk level based on adjusted score
+    # Update risk level based on adjusted score with more nuanced levels
     if adjusted_score >= 8:
         ai_analysis['risk_level'] = "Secure"
-    elif adjusted_score >= 5:
-        ai_analysis['risk_level'] = "Cautious"
+    elif adjusted_score >= 6:
+        ai_analysis['risk_level'] = "Probably Safe"
+    elif adjusted_score >= 4:
+        ai_analysis['risk_level'] = "Suspicious"
     elif adjusted_score >= 2:
         ai_analysis['risk_level'] = "Unsafe"
     else:
         ai_analysis['risk_level'] = "Dangerous"
     
     # Add explanation about hybrid analysis
-    if ai_analysis['explanation']:
-        ai_analysis['explanation'] = "HYBRID ANALYSIS: " + ai_analysis['explanation']
-        if rule_based_suspicious_patterns:
-            ai_analysis['explanation'] += f"\n\nAdditional suspicious patterns detected in subject: {', '.join(rule_based_suspicious_patterns)}"
+    explanation = "HYBRID ANALYSIS: "
+    
+    if ai_analysis.get('explanation'):
+        explanation += ai_analysis['explanation']
+    
+    if sketchy_analysis.get("keywords_found"):
+        explanation += f"\n\nSuspicious keywords detected in subject: {', '.join(sketchy_analysis['keywords_found'])}"
+    
+    if rule_based_suspicious_patterns and not sketchy_analysis.get("keywords_found"):
+        explanation += f"\n\nAdditional suspicious patterns detected in subject: {', '.join(rule_based_suspicious_patterns)}"
+    
+    ai_analysis['explanation'] = explanation
     
     return ai_analysis
 
