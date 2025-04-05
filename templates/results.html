@@ -188,18 +188,35 @@
                                                                 <p class="text-success">No suspicious patterns detected.</p>
                                                             {% endif %}
                                                             
+                                                            {% if email.security_analysis.explanation %}
+                                                            <div class="mt-3">
+                                                                <div class="card">
+                                                                    <div class="card-header bg-info bg-opacity-10">
+                                                                        <strong>AI Analysis Explanation</strong>
+                                                                    </div>
+                                                                    <div class="card-body">
+                                                                        <p>{{ email.security_analysis.explanation }}</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            {% endif %}
+                                                            
                                                             <div class="mt-3">
                                                                 <div class="alert alert-info">
-                                                                    <strong>Security Tips:</strong>
-                                                                    <ul class="mb-0">
-                                                                        {% if not email.security_analysis.is_trusted_domain %}
-                                                                            <li>The sender domain is not in the trusted list - verify the sender's identity through other means</li>
-                                                                        {% endif %}
-                                                                        {% if email.security_analysis.suspicious_patterns %}
-                                                                            <li>Suspicious wording detected - be cautious of urgent requests or demands</li>
-                                                                            <li>Don't click links or download attachments if you're uncertain about the email's authenticity</li>
-                                                                        {% endif %}
-                                                                    </ul>
+                                                                    <strong>Recommendations:</strong>
+                                                                    {% if email.security_analysis.recommendations %}
+                                                                        <p class="mt-2">{{ email.security_analysis.recommendations }}</p>
+                                                                    {% else %}
+                                                                        <ul class="mb-0">
+                                                                            {% if not email.security_analysis.is_trusted_domain %}
+                                                                                <li>The sender domain is not in the trusted list - verify the sender's identity through other means</li>
+                                                                            {% endif %}
+                                                                            {% if email.security_analysis.suspicious_patterns %}
+                                                                                <li>Suspicious wording detected - be cautious of urgent requests or demands</li>
+                                                                                <li>Don't click links or download attachments if you're uncertain about the email's authenticity</li>
+                                                                            {% endif %}
+                                                                        </ul>
+                                                                    {% endif %}
                                                                 </div>
                                                             </div>
                                                         </div>

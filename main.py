@@ -3,7 +3,8 @@ from flask import Flask, render_template, request, session, flash, redirect, url
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
-from email_security import batch_analyze_emails
+# Import the AI agent for email analysis instead of the rule-based approach
+from email_ai_agent import batch_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
 from sqlalchemy.orm import DeclarativeBase
