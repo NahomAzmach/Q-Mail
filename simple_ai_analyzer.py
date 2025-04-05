@@ -169,6 +169,14 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
                 analysis["risk_level"] = "Dangerous"
         
         # Create security analysis result
+        # Ensure recommendations is a list or convert string to list
+        recommendations = analysis.get("recommendations", "")
+        if isinstance(recommendations, str):
+            if recommendations and recommendations != "Not provided by analysis":
+                recommendations = [recommendations]
+            else:
+                recommendations = ["Be cautious with emails from unfamiliar senders."]
+                
         security_analysis = {
             "sender_domain": extract_domain_from_email(sender),
             "is_trusted_domain": analysis.get("is_trusted_sender", False),
@@ -176,7 +184,7 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
             "security_score": analysis.get("security_score", 5),
             "risk_level": analysis.get("risk_level", "Unknown"),
             "explanation": analysis.get("explanation", ""),
-            "recommendations": analysis.get("recommendations", "")
+            "recommendations": recommendations
         }
         
         return security_analysis

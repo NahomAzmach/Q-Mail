@@ -196,7 +196,7 @@
                                                 <div class="card">
                                                     <div class="card-body pb-0">
                                                         <p><strong>Risk Level:</strong> <span class="badge bg-{{ badge_color }}">{{ email.security_analysis.risk_level }}</span></p>
-                                                        <p><strong>Security Score:</strong> <span class="badge bg-dark">{{ email.security_analysis.security_score }}/10</span></p>
+                                                        <p><strong>Security Score:</strong> <span class="badge bg-dark">{% if email.security_analysis.security_score %}{{ email.security_analysis.security_score }}{% else %}5{% endif %}/10</span></p>
                                                         <p><strong>Domain:</strong> {{ email.security_analysis.domain }} ({{ 'Trusted' if email.security_analysis.is_trusted_domain else 'Not Trusted' }})</p>
                                                         
                                                         {% if email.security_analysis.suspicious_patterns %}
@@ -225,9 +225,13 @@
                                                         <div class="mb-3">
                                                             <strong>Recommendations:</strong>
                                                             <ul class="list-group list-group-flush mt-2">
-                                                                {% for rec in email.security_analysis.recommendations %}
-                                                                <li class="list-group-item">{{ rec }}</li>
-                                                                {% endfor %}
+                                                                {% if email.security_analysis.recommendations is string %}
+                                                                    <li class="list-group-item">{{ email.security_analysis.recommendations }}</li>
+                                                                {% else %}
+                                                                    {% for rec in email.security_analysis.recommendations %}
+                                                                    <li class="list-group-item">{{ rec }}</li>
+                                                                    {% endfor %}
+                                                                {% endif %}
                                                             </ul>
                                                         </div>
                                                         {% endif %}
