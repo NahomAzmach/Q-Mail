@@ -61,6 +61,28 @@ def index():
     # Show the home page with Google login button
     return render_template('index.html')
 
+@app.route('/oauth_setup', methods=['GET'])
+def oauth_setup():
+    """Display setup instructions for Google OAuth."""
+    # Get the exact redirect URI from environment
+    replit_domain = os.environ.get('REPLIT_DOMAINS', '')
+    if replit_domain and ',' in replit_domain:
+        replit_domain = replit_domain.split(',')[0].strip()
+    
+    # If no domain was found, use the request host
+    if not replit_domain and request:
+        replit_domain = request.host
+    
+    # Always use HTTP for the redirect URI (not HTTPS)
+    redirect_uri = f"http://{replit_domain}/google_login/callback"
+    
+    # Get client ID for display
+    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+    
+    return render_template('oauth_setup.html', 
+                          redirect_uri=redirect_uri,
+                          client_id=client_id)
+
 @app.route('/results', methods=['GET'])
 def results():
     """Display the fetched email results."""
