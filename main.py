@@ -6,7 +6,9 @@ from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
 # Import analysis methods
 from email_security import batch_analyze_emails as rule_based_analyze_emails
 # Import the new hybrid AI analyzer that combines OpenAI with rule-based fallback
-from hybrid_ai_analyzer import batch_analyze_emails as ai_analyze_emails
+from hybrid_ai_analyzer import batch_analyze_emails as full_ai_analyze_emails
+# Import the header-only AI analyzer that only sends domain and header info to AI
+from header_only_ai_analyzer import batch_analyze_emails as header_only_ai_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
 from sqlalchemy.orm import DeclarativeBase
@@ -153,6 +155,8 @@ def results():
     
     # Check if AI analysis is requested or use traditional analysis
     use_ai = request.args.get('ai', 'false').lower() == 'true'
+    # Check if full content or only headers should be sent to AI
+    privacy_mode = request.args.get('privacy', 'headers').lower()
     
     # Get email data from database
     email_list = [email.to_dict() for email in email_session.emails]
@@ -160,8 +164,13 @@ def results():
     # Perform security analysis
     try:
         if use_ai:
-            logger.info("Using AI-based email analysis")
-            analyzed_emails = ai_analyze_emails(email_list)
+            if privacy_mode == 'full':
+                logger.info("Using AI-based email analysis with full content")
+                analyzed_emails = full_ai_analyze_emails(email_list)
+            else:
+                # Default to header-only for privacy protection
+                logger.info("Using AI-based email analysis with headers only (privacy mode)")
+                analyzed_emails = header_only_ai_analyze_emails(email_list)
         else:
             logger.info("Using rule-based email analysis")
             analyzed_emails = rule_based_analyze_emails(email_list)
@@ -183,7 +192,8 @@ def results():
         'folder': 'INBOX',
         'count': len(email_session.emails),
         'emails': analyzed_emails,
-        'using_ai': use_ai
+        'using_ai': use_ai,
+        'privacy_mode': privacy_mode
     }
     
     return render_template('results.html', results=results)
@@ -197,7 +207,10 @@ def analyze_with_ai():
         flash('No emails to analyze. Please fetch emails first.', 'warning')
         return redirect(url_for('index'))
     
-    return redirect(url_for('results', ai='true'))
+    # Get privacy mode parameter (defaults to 'headers' for privacy)
+    privacy_mode = request.args.get('privacy', 'headers')
+    
+    return redirect(url_for('results', ai='true', privacy=privacy_mode))
 
 @app.route('/fetch_google_emails', methods=['GET'])
 @login_required
