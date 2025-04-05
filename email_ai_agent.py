@@ -5,7 +5,7 @@ for security concerns, replacing the simple rule-based detection with LLM-powere
 """
 import os
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, TypedDict, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -17,11 +17,21 @@ from langgraph.prebuilt import ToolNode
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Define a schema for our state
+class EmailAgentState(TypedDict):
+    email: Dict[str, Any]
+    security_analysis: Optional[Dict[str, Any]]
+
 # Initialize the OpenAI model - GPT-4o Mini
-model = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.0,  # Keep it deterministic for security analysis
-)
+try:
+    model = ChatOpenAI(
+        model="gpt-4o-mini",
+        temperature=0.0,  # Keep it deterministic for security analysis
+        request_timeout=20.0,  # Set a reasonable timeout
+    )
+except Exception as e:
+    logger.error(f"Error initializing OpenAI model: {str(e)}")
+    model = None
 
 # Define the email analysis prompt template
 EMAIL_ANALYSIS_PROMPT = """
@@ -71,8 +81,8 @@ class EmailAnalyzerAgent:
         Returns:
             StateGraph: The agent workflow graph
         """
-        # Build a simple graph for email analysis
-        builder = StateGraph("EmailAnalysisAgent")
+        # Build a simple graph for email analysis with proper state schema
+        builder = StateGraph(EmailAgentState)
         
         # Define the email analysis node
         builder.add_node("analyze_email", self._analyze_email)
@@ -107,6 +117,8 @@ class EmailAnalyzerAgent:
         
         try:
             # Generate the analysis using the LLM
+            if model is None:
+                raise ValueError("OpenAI model not available")
             response = model.invoke(formatted_messages)
             
             # Extract the analysis from the response
@@ -268,8 +280,8 @@ class EmailAnalyzerAgent:
         Returns:
             Dictionary with email data and security analysis
         """
-        # Prepare the initial state
-        initial_state = {"email": email}
+        # Prepare the initial state with proper schema
+        initial_state = {"email": email, "security_analysis": None}
         
         # Run the agent graph
         try:

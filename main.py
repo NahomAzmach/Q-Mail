@@ -3,8 +3,9 @@ from flask import Flask, render_template, request, session, flash, redirect, url
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
-# Import the AI agent for email analysis instead of the rule-based approach
-from email_ai_agent import batch_analyze_emails
+# Import both analysis methods to allow fallback
+from email_security import batch_analyze_emails as rule_based_analyze_emails
+from email_ai_agent import batch_analyze_emails as ai_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
 from sqlalchemy.orm import DeclarativeBase
@@ -149,9 +150,30 @@ def results():
         session.pop('email_session_id', None)
         return redirect(url_for('index'))
     
-    # Get email data and perform security analysis
+    # Check if AI analysis is requested or use traditional analysis
+    use_ai = request.args.get('ai', 'false').lower() == 'true'
+    
+    # Get email data from database
     email_list = [email.to_dict() for email in email_session.emails]
-    analyzed_emails = batch_analyze_emails(email_list)
+    
+    # Perform security analysis
+    try:
+        if use_ai:
+            logger.info("Using AI-based email analysis")
+            analyzed_emails = ai_analyze_emails(email_list)
+        else:
+            logger.info("Using rule-based email analysis")
+            analyzed_emails = rule_based_analyze_emails(email_list)
+    except Exception as e:
+        logger.error(f"Error in email analysis: {str(e)}")
+        # Fallback to rule-based analysis if AI analysis fails
+        try:
+            analyzed_emails = rule_based_analyze_emails(email_list)
+            flash("AI analysis failed. Showing results from rule-based analysis instead.", "warning")
+        except Exception as e2:
+            logger.error(f"Error in fallback analysis: {str(e2)}")
+            analyzed_emails = email_list  # Just show raw emails if all analysis fails
+            flash("Email analysis failed. Showing raw emails without security analysis.", "danger")
     
     # Format the results to match the template expectations
     results = {
@@ -159,10 +181,22 @@ def results():
         'imap_server': 'Stored in database',
         'folder': 'INBOX',
         'count': len(email_session.emails),
-        'emails': analyzed_emails
+        'emails': analyzed_emails,
+        'using_ai': use_ai
     }
     
     return render_template('results.html', results=results)
+
+@app.route('/analyze_with_ai', methods=['GET'])
+def analyze_with_ai():
+    """Run AI analysis on already fetched emails."""
+    session_id = session.get('email_session_id')
+    
+    if not session_id:
+        flash('No emails to analyze. Please fetch emails first.', 'warning')
+        return redirect(url_for('index'))
+    
+    return redirect(url_for('results', ai='true'))
 
 @app.route('/fetch_google_emails', methods=['GET'])
 @login_required
