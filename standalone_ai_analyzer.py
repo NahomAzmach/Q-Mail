@@ -581,6 +581,7 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
         # Create security analysis result
         security_analysis = {
             "sender_domain": sender_domain,
+            "domain": sender_domain,  # Add domain key for template compatibility
             "is_trusted_domain": is_trusted_domain,
             "suspicious_patterns": suspicious_patterns,
             "security_score": security_score,
@@ -593,9 +594,13 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
     
     except Exception as e:
         logger.error(f"Error in rule-based email analysis: {str(e)}")
+        # Extract domain even in error case
+        sender_domain = extract_domain_from_email(email_data.get('from', ''))
+        
         # Return a basic analysis in case of error
         return {
-            "sender_domain": extract_domain_from_email(email_data.get('from', '')),
+            "sender_domain": sender_domain,
+            "domain": sender_domain,  # Add domain key for template compatibility
             "is_trusted_domain": False,
             "suspicious_patterns": ["Analysis error - unable to process email"],
             "security_score": 5,  # Default middle score for errors
@@ -627,9 +632,13 @@ def batch_analyze_emails_with_rules(emails: List[Dict[str, Any]]) -> List[Dict[s
                     
             except Exception as e:
                 logger.error(f"Error analyzing email: {str(e)}")
+                # Extract domain
+                sender_domain = extract_domain_from_email(email.get('from', ''))
+                
                 # Add a basic error analysis
                 email["security_analysis"] = {
-                    "sender_domain": extract_domain_from_email(email.get('from', '')),
+                    "sender_domain": sender_domain,
+                    "domain": sender_domain,
                     "is_trusted_domain": False,
                     "suspicious_patterns": ["Analysis error"],
                     "security_score": 5,  # Default middle score for errors
@@ -645,8 +654,12 @@ def batch_analyze_emails_with_rules(emails: List[Dict[str, Any]]) -> List[Dict[s
         logger.error(f"Error in batch email analysis: {str(e)}")
         # Return original emails with basic error analysis
         for email in emails:
+            # Extract domain for each email
+            sender_domain = extract_domain_from_email(email.get('from', ''))
+            
             email["security_analysis"] = {
-                "sender_domain": extract_domain_from_email(email.get('from', '')),
+                "sender_domain": sender_domain,
+                "domain": sender_domain,
                 "is_trusted_domain": False,
                 "suspicious_patterns": ["Batch analysis error"],
                 "security_score": 5,  # Default middle score for errors
@@ -656,6 +669,89 @@ def batch_analyze_emails_with_rules(emails: List[Dict[str, Any]]) -> List[Dict[s
             }
         
         return emails
+
+def ensure_domain_field_and_trusted_domains(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Ensure the security analysis has both domain fields and trusted domains are recognized.
+    
+    Args:
+        result: The security analysis result to process
+        
+    Returns:
+        Updated security analysis with domain field and forced trust rules applied
+    """
+    # Force-trusted domains with minimum security scores
+    TRUSTED_DOMAINS = {
+        'gmail.com': 8.0,
+        'google.com': 8.0,
+        'apple.com': 8.0,
+        'icloud.com': 7.5,
+        'outlook.com': 7.0,
+        'microsoft.com': 7.5,
+        'yahoo.com': 7.0,
+        'live.com': 7.0,
+        'hotmail.com': 7.0,
+        'aol.com': 7.0,
+        'proton.me': 8.0,
+        'protonmail.com': 8.0
+    }
+    
+    # Make a copy to avoid modifying the original directly
+    processed = result.copy() if result else {}
+    
+    # Add default values for any missing fields to ensure consistency
+    defaults = {
+        'sender_domain': '',
+        'domain': '',
+        'is_trusted_domain': False,
+        'suspicious_patterns': [],
+        'security_score': 5.0,
+        'risk_level': 'Unknown',
+        'explanation': '',
+        'recommendations': ''
+    }
+    
+    # Apply defaults for any missing fields
+    for field, default_value in defaults.items():
+        if field not in processed:
+            processed[field] = default_value
+    
+    # Ensure domain fields are consistent
+    if processed['sender_domain'] and not processed['domain']:
+        processed['domain'] = processed['sender_domain']
+    elif processed['domain'] and not processed['sender_domain']:
+        processed['sender_domain'] = processed['domain']
+    
+    # Handle trusted domains logic
+    domain = processed['sender_domain']
+    if domain in TRUSTED_DOMAINS:
+        # Mark as trusted
+        processed['is_trusted_domain'] = True
+        
+        # Ensure minimum security score
+        min_score = TRUSTED_DOMAINS[domain]
+        if processed['security_score'] < min_score:
+            processed['security_score'] = min_score
+            
+            # Add trusted domain note to explanation if not already there
+            trusted_prefix = f"[TRUSTED DOMAIN: {domain}]"
+            if trusted_prefix not in processed['explanation']:
+                processed['explanation'] = f"{trusted_prefix} {processed['explanation']}"
+    
+    # Ensure risk level matches security score
+    score = processed['security_score']
+    if score >= 8:
+        processed['risk_level'] = "Secure"
+    elif score >= 6:
+        processed['risk_level'] = "Probably Safe"
+    elif score >= 4:
+        processed['risk_level'] = "Suspicious"
+    elif score >= 2:
+        processed['risk_level'] = "Unsafe"
+    else:
+        processed['risk_level'] = "Dangerous"
+    
+    return processed
 
 # Public functions to be used by the main application
 def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
@@ -669,7 +765,8 @@ def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dictionary with security analysis results
     """
-    return analyze_email_with_rules(email)
+    result = analyze_email_with_rules(email)
+    return ensure_domain_field_and_trusted_domains(result)
 
 def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -682,4 +779,11 @@ def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Returns:
         List of emails with security analysis added
     """
-    return batch_analyze_emails_with_rules(emails)
+    analyzed_emails = batch_analyze_emails_with_rules(emails)
+    
+    # Apply trusted domain logic to each email's security analysis
+    for email in analyzed_emails:
+        if 'security_analysis' in email:
+            email['security_analysis'] = ensure_domain_field_and_trusted_domains(email['security_analysis'])
+    
+    return analyzed_emails

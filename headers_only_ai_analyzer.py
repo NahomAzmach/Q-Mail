@@ -268,8 +268,12 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
             is_trusted = analysis.get("is_trusted_sender", False)
             security_score = analysis.get("security_score", 5)
         
+        # Extract sender domain
+        sender_domain = extract_domain_from_email(sender)
+        
         security_analysis = {
-            "sender_domain": extract_domain_from_email(sender),
+            "sender_domain": sender_domain,
+            "domain": sender_domain,  # Add domain key for template compatibility
             "is_trusted_domain": is_trusted,
             "suspicious_patterns": analysis.get("suspicious_patterns_detected", []),
             "security_score": security_score,
@@ -286,8 +290,19 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
     
     except Exception as e:
         logger.error(f"Error in headers-only email analysis: {str(e)}")
-        # Fallback to rule-based analysis
-        return analyze_email_with_rules(email_data)
+        # Extract domain even when doing fallback
+        sender_domain = extract_domain_from_email(email_data.get('from', ''))
+        result = analyze_email_with_rules(email_data)
+        
+        # Ensure we have both domain fields in the fallback result
+        if 'domain' not in result and 'sender_domain' in result:
+            result['domain'] = result['sender_domain']
+            
+        # Force gmail.com to be trusted regardless of analysis
+        if 'sender_domain' in result and result['sender_domain'] == 'gmail.com':
+            result['is_trusted_domain'] = True
+            
+        return result
 
 def batch_hybrid_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -392,6 +407,89 @@ def batch_analyze_emails_with_openai_headers_only(emails: List[Dict[str, Any]]) 
         # Fallback to rule-based analysis for all emails
         return batch_analyze_emails_with_rules(emails)
 
+def ensure_domain_field_and_trusted_domains(result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Ensure the security analysis has both domain fields and trusted domains are recognized.
+    
+    Args:
+        result: The security analysis result to process
+        
+    Returns:
+        Updated security analysis with domain field and forced trust rules applied
+    """
+    # Force-trusted domains with minimum security scores
+    TRUSTED_DOMAINS = {
+        'gmail.com': 8.0,
+        'google.com': 8.0,
+        'apple.com': 8.0,
+        'icloud.com': 7.5,
+        'outlook.com': 7.0,
+        'microsoft.com': 7.5,
+        'yahoo.com': 7.0,
+        'live.com': 7.0,
+        'hotmail.com': 7.0,
+        'aol.com': 7.0,
+        'proton.me': 8.0,
+        'protonmail.com': 8.0
+    }
+    
+    # Make a copy to avoid modifying the original directly
+    processed = result.copy() if result else {}
+    
+    # Add default values for any missing fields to ensure consistency
+    defaults = {
+        'sender_domain': '',
+        'domain': '',
+        'is_trusted_domain': False,
+        'suspicious_patterns': [],
+        'security_score': 5.0,
+        'risk_level': 'Unknown',
+        'explanation': '',
+        'recommendations': ''
+    }
+    
+    # Apply defaults for any missing fields
+    for field, default_value in defaults.items():
+        if field not in processed:
+            processed[field] = default_value
+    
+    # Ensure domain fields are consistent
+    if processed['sender_domain'] and not processed['domain']:
+        processed['domain'] = processed['sender_domain']
+    elif processed['domain'] and not processed['sender_domain']:
+        processed['sender_domain'] = processed['domain']
+    
+    # Handle trusted domains logic
+    domain = processed['sender_domain']
+    if domain in TRUSTED_DOMAINS:
+        # Mark as trusted
+        processed['is_trusted_domain'] = True
+        
+        # Ensure minimum security score
+        min_score = TRUSTED_DOMAINS[domain]
+        if processed['security_score'] < min_score:
+            processed['security_score'] = min_score
+            
+            # Add trusted domain note to explanation if not already there
+            trusted_prefix = f"[TRUSTED DOMAIN: {domain}]"
+            if trusted_prefix not in processed['explanation']:
+                processed['explanation'] = f"{trusted_prefix} {processed['explanation']}"
+    
+    # Ensure risk level matches security score
+    score = processed['security_score']
+    if score >= 8:
+        processed['risk_level'] = "Secure"
+    elif score >= 6:
+        processed['risk_level'] = "Probably Safe"
+    elif score >= 4:
+        processed['risk_level'] = "Suspicious"
+    elif score >= 2:
+        processed['risk_level'] = "Unsafe"
+    else:
+        processed['risk_level'] = "Dangerous"
+    
+    return processed
+
 # Public functions to be used by the main application
 def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -405,7 +503,8 @@ def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
     Returns:
         Dictionary with combined security analysis results
     """
-    return hybrid_analyze_email(email)
+    result = hybrid_analyze_email(email)
+    return ensure_domain_field_and_trusted_domains(result)
 
 def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -418,4 +517,11 @@ def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     Returns:
         List of emails with combined security analysis added
     """
-    return batch_hybrid_analyze_emails(emails)
+    analyzed_emails = batch_hybrid_analyze_emails(emails)
+    
+    # Apply trusted domain logic to each email's security analysis
+    for email in analyzed_emails:
+        if 'security_analysis' in email:
+            email['security_analysis'] = ensure_domain_field_and_trusted_domains(email['security_analysis'])
+    
+    return analyzed_emails
