@@ -225,8 +225,8 @@ def check_email_content(subject: str, body: str) -> List[Dict[str, str]]:
 
 def calculate_risk_level(
     is_trusted_domain: bool,
-    suspicious_elements: List[Dict[str, str]]
-) -> str:
+    suspicious_elements: List[Dict[str, Any]]
+) -> Tuple[str, float]:
     """
     Calculate the overall risk level based on analysis results.
     
@@ -265,15 +265,15 @@ def calculate_risk_level(
     
     # Determine risk level based on the new scale
     if security_score >= 8:
-        return "Secure"
+        return ("Secure", security_score)
     elif security_score >= 5:
-        return "Cautious" 
+        return ("Cautious", security_score) 
     elif security_score >= 2:
-        return "Unsafe"
+        return ("Unsafe", security_score)
     else:
-        return "Dangerous"
+        return ("Dangerous", security_score)
 
-def generate_recommendations(risk_level: str, suspicious_elements: List[Dict[str, str]]) -> str:
+def generate_recommendations(risk_level: str, suspicious_elements: List[Dict[str, Any]]) -> str:
     """
     Generate specific recommendations based on analysis.
     
@@ -352,14 +352,18 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
                 suspicious_patterns.append(f"Suspicious keywords: {element['details']}")
             elif element["type"] == "suspicious_urls":
                 for url_info in element.get("urls", [])[:3]:  # Limit to 3 URLs
-                    url = url_info.get("url", "unknown URL")
-                    reason = url_info.get("reason", "unknown reason")
-                    suspicious_patterns.append(f"Suspicious URL: {url} - {reason}")
+                    if isinstance(url_info, dict):
+                        url = url_info.get("url", "unknown URL")
+                        reason = url_info.get("reason", "unknown reason")
+                        suspicious_patterns.append(f"Suspicious URL: {url} - {reason}")
+                    else:
+                        suspicious_patterns.append(f"Suspicious URL detected")
             elif element["type"] == "grammatical_errors":
                 suspicious_patterns.append(f"Multiple grammatical errors detected ({element['details']})")
         
-        # Calculate risk level
-        risk_level = calculate_risk_level(is_trusted_domain, suspicious_elements)
+        # Calculate risk level and security score
+        risk_level_and_score = calculate_risk_level(is_trusted_domain, suspicious_elements)
+        risk_level, security_score = risk_level_and_score  # Unpack the tuple
         
         # Generate explanation
         explanation_parts = []
@@ -375,6 +379,9 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
                 explanation_parts.append(f"- {pattern}")
         else:
             explanation_parts.append("No obvious suspicious patterns detected in the email content")
+            
+        # Add security score explanation
+        explanation_parts.append(f"Security score: {security_score:.1f}/10 - {risk_level}")
         
         explanation = "\n".join(explanation_parts)
         
@@ -386,6 +393,7 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
             "sender_domain": sender_domain,
             "is_trusted_domain": is_trusted_domain,
             "suspicious_patterns": suspicious_patterns,
+            "security_score": security_score,
             "risk_level": risk_level,
             "explanation": explanation,
             "recommendations": recommendations
@@ -400,6 +408,7 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
             "sender_domain": extract_domain_from_email(email_data.get('from', '')),
             "is_trusted_domain": False,
             "suspicious_patterns": ["Analysis error - unable to process email"],
+            "security_score": 5,  # Default middle score for errors
             "risk_level": "Unknown",
             "explanation": f"An error occurred during analysis: {str(e)}",
             "recommendations": "• Consider manual inspection of this email\n• Do not click on links or download attachments"
@@ -433,6 +442,7 @@ def batch_analyze_emails_with_rules(emails: List[Dict[str, Any]]) -> List[Dict[s
                     "sender_domain": extract_domain_from_email(email.get('from', '')),
                     "is_trusted_domain": False,
                     "suspicious_patterns": ["Analysis error"],
+                    "security_score": 5,  # Default middle score for errors
                     "risk_level": "Unknown",
                     "explanation": f"An error occurred during analysis: {str(e)}",
                     "recommendations": "• Consider manual inspection of this email"
@@ -449,6 +459,7 @@ def batch_analyze_emails_with_rules(emails: List[Dict[str, Any]]) -> List[Dict[s
                 "sender_domain": extract_domain_from_email(email.get('from', '')),
                 "is_trusted_domain": False,
                 "suspicious_patterns": ["Batch analysis error"],
+                "security_score": 5,  # Default middle score for errors
                 "risk_level": "Unknown",
                 "explanation": f"An error occurred during batch analysis: {str(e)}",
                 "recommendations": "• Consider manual inspection of these emails"

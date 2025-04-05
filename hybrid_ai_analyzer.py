@@ -47,30 +47,34 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
         # Get email details
         sender = email_data.get('from', '')
         subject = email_data.get('subject', '')
-        body = email_data.get('body', '')
         
-        # Create prompt for OpenAI
+        # Extract domain
+        sender_domain = extract_domain_from_email(sender)
+        
+        # Create prompt for OpenAI using only domain and headers (no body content)
         prompt = f"""
         You are an expert email security analyst with deep knowledge of phishing tactics and email security threats.
-        Analyze the following email for any signs of phishing, scams, or security concerns.
+        Analyze the following email header information for any signs of phishing, scams, or security concerns.
+        DO NOT make assumptions about email content as you don't have access to the body for privacy reasons.
         
-        EMAIL DETAILS:
+        EMAIL HEADER DETAILS:
         - From: {sender}
+        - Sender Domain: {sender_domain}
         - Subject: {subject}
-        - Body:
-        {body}
+        - Date: {email_data.get('date', '')}
         
         Analyze this email's security aspects by considering:
-        1. Does the sender look legitimate? Check the domain and sender details.
-        2. Is the content suspicious with urgent calls to action, requests for sensitive information, or unusual language?
-        3. Are there suspicious patterns like urgent requests, fear tactics, grammatical errors, or unusual requests?
-        4. What is the overall security level (Secure, Cautious, Unsafe, Dangerous) and why?
+        1. Is the sender domain legitimate or suspicious? Look for typos, unusual TLDs, or domains known for abuse.
+        2. Does the subject line contain suspicious patterns?
+        3. Is this a known trusted domain (like google.com, microsoft.com, amazon.com, etc.)?
+        4. Score the security from 1-10 where 10 is completely secure and 1 is definitely malicious.
         
         Return your analysis in a structured JSON format with these keys:
-        - "is_trusted_sender": true/false based on sender legitimacy
-        - "suspicious_patterns_detected": list of specific suspicious patterns found (empty if none)
-        - "risk_level": "Secure", "Cautious", "Unsafe", or "Dangerous"
-        - "explanation": detailed reasoning for your assessment
+        - "is_trusted_sender": true/false based on sender domain legitimacy
+        - "suspicious_patterns_detected": list of specific suspicious patterns found in the headers (empty if none) 
+        - "security_score": a number from 1-10 (10 being most secure, 1 being most dangerous)
+        - "risk_level": "Secure" (8-10), "Cautious" (5-7), "Unsafe" (2-4), or "Dangerous" (1)
+        - "explanation": detailed reasoning for your assessment, focusing ONLY on the sender domain and header information
         - "recommendations": suggested actions for the recipient
         """
         
@@ -141,6 +145,27 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
         for field in ['is_trusted_sender', 'risk_level', 'explanation', 'recommendations']:
             if field not in analysis:
                 analysis[field] = "Not provided by analysis"
+                
+        # Handle security score
+        if 'security_score' not in analysis:
+            analysis['security_score'] = 5  # Default middle score
+        elif isinstance(analysis['security_score'], str):
+            try:
+                analysis['security_score'] = int(analysis['security_score'])
+            except ValueError:
+                analysis['security_score'] = 5  # Default if parsing fails
+        
+        # Determine risk level based on security score if not provided properly
+        if not analysis.get("risk_level") or analysis.get("risk_level") == "Not provided by analysis":
+            score = analysis["security_score"]
+            if score >= 8:
+                analysis["risk_level"] = "Secure"
+            elif score >= 5:
+                analysis["risk_level"] = "Cautious"
+            elif score >= 2:
+                analysis["risk_level"] = "Unsafe"
+            else:
+                analysis["risk_level"] = "Dangerous"
         
         # If is_trusted_sender is a string "true"/"false", convert to boolean
         if isinstance(analysis.get('is_trusted_sender'), str):
@@ -151,6 +176,7 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
             "sender_domain": extract_domain_from_email(sender),
             "is_trusted_domain": analysis.get("is_trusted_sender", False),
             "suspicious_patterns": analysis.get("suspicious_patterns_detected", []),
+            "security_score": analysis.get("security_score", 5),
             "risk_level": analysis.get("risk_level", "Unknown"),
             "explanation": analysis.get("explanation", ""),
             "recommendations": analysis.get("recommendations", "")
