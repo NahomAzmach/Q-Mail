@@ -70,11 +70,7 @@
                         <h1 class="h3 mb-0">
                             Email Fetcher Results
                             {% if results.using_ai %}
-                                {% if results.privacy_mode == 'full' %}
-                                <span class="badge bg-primary ms-2">AI Analysis (Full Content)</span>
-                                {% else %}
-                                <span class="badge bg-primary ms-2">AI Analysis (Headers Only)</span>
-                                {% endif %}
+                            <span class="badge bg-primary ms-2">AI Analysis</span>
                             {% else %}
                             <span class="badge bg-secondary ms-2">Basic Analysis</span>
                             {% endif %}
@@ -114,16 +110,6 @@
                             {% if messages %}
                                 {% for category, message in messages %}
                                     <div class="alert alert-{{ category }}">{{ message }}</div>
-                        {% if results.using_ai %}
-                        <div class="alert {% if results.privacy_mode == "headers" %}alert-info{% else %}alert-warning{% endif %} mb-4">
-                            <h5 class="alert-heading">Privacy Notice</h5>
-                            {% if results.privacy_mode == "headers" %}
-                            <p class="mb-0"><strong>Headers-Only Mode:</strong> Only email headers (from, subject, date) are sent to AI for analysis. Email content remains private.</p>
-                            {% else %}
-                            <p class="mb-0"><strong>Full Content Mode:</strong> Email headers and body content are sent to AI for more accurate analysis. For maximum privacy, use Headers-Only mode.</p>
-                            {% endif %}
-                        </div>
-                        {% endif %}
                                 {% endfor %}
                             {% endif %}
                         {% endwith %}
