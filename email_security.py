@@ -1,12 +1,7 @@
 """Email security module for validating email senders and content."""
 import re
 import logging
-import ipaddress
-import json
-import requests
-import time
-import urllib.parse
-from typing import Dict, List, Tuple, Optional, Union, Any
+from typing import Dict, List, Tuple
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,20 +26,6 @@ DEFAULT_TRUSTED_DOMAINS = [
     
     # Add more trusted domains as needed
 ]
-
-# List of suspicious TLDs often used for spam/phishing
-SUSPICIOUS_TLDS = [
-    'xyz', 'top', 'click', 'club', 'vip', 'win', 'loan', 'online', 'gq', 'ml', 'cf', 'tk', 'ga'
-]
-
-# QMail Trust Score categories
-TRUST_SCORE_CATEGORIES = {
-    10: {"flag": "✅", "label": "Secure", "description": "Everything checks out. Verified sender, clean links, no suspicious signs."},
-    8: {"flag": "🟢", "label": "Safe", "description": "Minor quirks, but overall looks trustworthy. Possibly a custom domain or mild formatting."},
-    5: {"flag": "🟠", "label": "Cautious", "description": "Some red flags detected — proceed carefully. Medium-risk sender or questionable links/text."},
-    2: {"flag": "🔴", "label": "Unsafe", "description": "High probability of phishing or scam. Multiple signs of deception present."},
-    0: {"flag": "☠️", "label": "Dangerous", "description": "Definitely malicious. Known scammer, blacklisted links, fake domains, etc."}
-}
 
 # Common email patterns indicating phishing or spam
 SUSPICIOUS_PATTERNS = [
@@ -170,264 +151,6 @@ def check_for_suspicious_patterns(subject: str, body: str) -> List[str]:
     
     return found_patterns
 
-def extract_links_from_text(text: str) -> List[str]:
-    """Extract URLs from text using regex.
-    
-    Args:
-        text: Text to search for URLs
-        
-    Returns:
-        List of found URLs
-    """
-    # Basic URL regex pattern
-    url_pattern = r'https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+'
-    return re.findall(url_pattern, text)
-
-def check_phishtank_api(url: str) -> Dict[str, Any]:
-    """
-    Check a URL against the PhishTank API to determine if it's a known phishing URL.
-    
-    Args:
-        url: The URL to check
-        
-    Returns:
-        Dictionary with phishing check results
-    """
-    result = {
-        'url': url,
-        'is_phishing': False,
-        'verified': False,
-        'in_database': False,
-        'details': None,
-        'error': None
-    }
-    
-    try:
-        # PhishTank API URL
-        api_url = "https://checkurl.phishtank.com/checkurl/"
-        
-        # Request headers
-        headers = {
-            'User-Agent': 'QMailSecurityAnalyzer/1.0',
-            'Accept': 'application/json',
-        }
-        
-        # Request data
-        data = {
-            'url': url,
-            'format': 'json',
-        }
-        
-        # Make the request with a timeout
-        response = requests.post(api_url, headers=headers, data=data, timeout=5)
-        
-        # Check if the request was successful
-        if response.status_code == 200:
-            try:
-                results = response.json()
-                
-                # Check if the response contains expected data
-                if 'results' in results and 'url' in results['results']:
-                    result['in_database'] = True
-                    result['is_phishing'] = results['results']['in_database']
-                    
-                    if result['is_phishing']:
-                        result['verified'] = results['results'].get('verified')
-                        result['details'] = {
-                            'phish_id': results['results'].get('phish_id'),
-                            'phish_detail_url': results['results'].get('phish_detail_url'),
-                            'verification_time': results['results'].get('verification_time')
-                        }
-                else:
-                    result['error'] = 'Unexpected API response format'
-            except json.JSONDecodeError:
-                result['error'] = 'Invalid JSON response'
-        else:
-            result['error'] = f'API request failed with status code: {response.status_code}'
-    
-    except requests.exceptions.Timeout:
-        result['error'] = 'API request timed out'
-    except requests.exceptions.RequestException as e:
-        result['error'] = f'API request error: {str(e)}'
-    except Exception as e:
-        result['error'] = f'Unexpected error: {str(e)}'
-    
-    return result
-
-def analyze_link_safety(links: List[str]) -> Dict[str, Any]:
-    """Analyze links for suspicious characteristics.
-    
-    Args:
-        links: List of URLs to analyze
-        
-    Returns:
-        Dict with link analysis results
-    """
-    if not links:
-        return {"safe": True, "issues": [], "phishing_detected": False, "phishtank_results": []}
-    
-    issues = []
-    phishtank_results = []
-    phishing_detected = False
-    
-    for link in links:
-        # Check for IP addresses in URLs
-        if re.search(r'https?://\d+\.\d+\.\d+\.\d+', link):
-            issues.append(f"IP address used in URL: {link}")
-        
-        try:
-            # Parse the URL
-            parsed_url = urllib.parse.urlparse(link)
-            
-            # Extract domain
-            domain = parsed_url.netloc
-            
-            # Check with PhishTank API for known phishing URLs
-            if domain:  # Only check valid URLs with domains
-                phishtank_result = check_phishtank_api(link)
-                phishtank_results.append(phishtank_result)
-                
-                if phishtank_result['is_phishing']:
-                    phishing_detected = True
-                    issues.append(f"URL detected as phishing by PhishTank: {link}")
-            
-            # Check for suspicious TLDs
-            domain_parts = domain.split('.')
-            if len(domain_parts) > 1:
-                tld = domain_parts[-1].lower()
-                if tld in SUSPICIOUS_TLDS:
-                    issues.append(f"Suspicious TLD (.{tld}) in URL: {link}")
-            
-            # Check for encoded characters
-            if '%' in parsed_url.path or '%' in domain:
-                issues.append(f"Encoded characters in URL: {link}")
-                
-        except Exception as e:
-            logger.warning(f"Error analyzing URL {link}: {str(e)}")
-            issues.append(f"Malformed URL: {link}")
-    
-    return {
-        "safe": len(issues) == 0,
-        "issues": issues,
-        "phishing_detected": phishing_detected,
-        "phishtank_results": phishtank_results
-    }
-
-def calculate_qmail_trust_score(domain: str, is_trusted: bool, suspicious_patterns: List[str], 
-                               body: str, subject: str) -> Dict[str, Any]:
-    """Calculate QMail Trust Score for an email.
-    
-    Args:
-        domain: Sender's domain
-        is_trusted: Whether domain is trusted
-        suspicious_patterns: List of suspicious patterns found
-        body: Email body text
-        subject: Email subject
-        
-    Returns:
-        Dict with score and details
-    """
-    # Start with a perfect score
-    score = 10
-    deductions = []
-    
-    # Sender Email Analysis
-    if not domain:
-        score -= 2
-        deductions.append("Missing sender domain (-2)")
-    elif is_trusted:
-        # It's a trusted domain, no deduction
-        pass
-    else:
-        # Custom domain, check if it has a suspicious TLD
-        domain_parts = domain.split('.')
-        if len(domain_parts) > 1:
-            tld = domain_parts[-1].lower()
-            if tld in SUSPICIOUS_TLDS:
-                score -= 2
-                deductions.append(f"Suspicious TLD (.{tld}) (-2)")
-            else:
-                # Just a non-standard domain
-                score -= 1
-                deductions.append("Custom domain (-1)")
-    
-    # Link Analysis
-    links = extract_links_from_text(body)
-    link_analysis = analyze_link_safety(links)
-    if not link_analysis["safe"]:
-        # Check PhishTank API results - automatic 0 score if confirmed phishing URL
-        if link_analysis.get("phishing_detected", False):
-            score = 0  # Set to lowest possible score
-            deductions.append("PhishTank confirmed phishing URL found (automatic 0 score)")
-        
-        # Apply other deductions for suspicious link characteristics
-        for issue in link_analysis["issues"]:
-            if "PhishTank" in issue:
-                # Already applied maximum deduction above
-                continue
-            elif "IP address" in issue:
-                score -= 3
-                deductions.append("IP address in URL (-3)")
-            elif "Suspicious TLD" in issue:
-                score -= 2
-                deductions.append("Link domain with suspicious TLD (-2)")
-            elif "Encoded characters" in issue:
-                score -= 2
-                deductions.append("Encoded/obfuscated URL (-2)")
-    
-    # Text Analysis
-    if suspicious_patterns:
-        # Deduct for urgent/bait phrases
-        urgent_patterns = [p for p in suspicious_patterns if 
-                         any(word in p for word in ['urgent', 'act now', 'immediate', 'verify', 'confirm'])]
-        if urgent_patterns:
-            score -= 2
-            deductions.append("Urgent/bait phrases detected (-2)")
-        
-        # Check for multiple suspicious patterns
-        if len(suspicious_patterns) >= 3:
-            score -= 3
-            deductions.append("Multiple suspicious phrases detected (-3)")
-        elif len(suspicious_patterns) > 0:
-            score -= 1
-            deductions.append("Suspicious phrasing detected (-1)")
-    
-    # Grammar/Formatting Check (basic)
-    if body:
-        # Check for ALL CAPS sections
-        if re.search(r'[A-Z]{5,}', body):
-            score -= 1
-            deductions.append("Excessive formatting (ALL CAPS) (-1)")
-            
-        # Check for excessive punctuation
-        if re.search(r'[!?]{3,}', body + subject):
-            score -= 1
-            deductions.append("Excessive punctuation (!!! or ???) (-1)")
-    
-    # Ensure score doesn't go below 0
-    score = max(0, score)
-    
-    # Determine which category the score falls into
-    category_threshold = None
-    for threshold in sorted(TRUST_SCORE_CATEGORIES.keys(), reverse=True):
-        if score >= threshold:
-            category_threshold = threshold
-            break
-    
-    if category_threshold is None:
-        category_threshold = min(TRUST_SCORE_CATEGORIES.keys())
-    
-    category = TRUST_SCORE_CATEGORIES[category_threshold]
-    
-    return {
-        "score": score,
-        "deductions": deductions,
-        "category_threshold": category_threshold,
-        "flag": category["flag"],
-        "label": category["label"],
-        "description": category["description"]
-    }
-
 def analyze_email_security(email: Dict) -> Dict:
     """Analyze an email for security concerns.
     
@@ -452,37 +175,23 @@ def analyze_email_security(email: Dict) -> Dict:
     # Check for suspicious patterns
     suspicious_patterns = check_for_suspicious_patterns(subject, body)
     
-    # Extract links from email body for further analysis
-    links = extract_links_from_text(body)
-    link_analysis = analyze_link_safety(links)
-    phishing_detected = link_analysis.get("phishing_detected", False)
-    phishtank_results = link_analysis.get("phishtank_results", [])
-    
-    # Calculate QMail Trust Score
-    qmail_score = calculate_qmail_trust_score(domain, trusted, suspicious_patterns, body, subject)
-    
-    # Determine overall risk level based on QMail score
-    if qmail_score["score"] >= 8:
+    # Determine overall risk level
+    if not domain:
+        risk_level = "Unknown"
+    elif trusted and not suspicious_patterns:
         risk_level = "Low"
-    elif qmail_score["score"] >= 5:
+    elif trusted and suspicious_patterns:
+        risk_level = "Medium"
+    elif not trusted and not suspicious_patterns:
         risk_level = "Medium"
     else:
         risk_level = "High"
     
-    # Automatic high risk for confirmed phishing
-    if phishing_detected:
-        risk_level = "High"
-        
     return {
         'sender_domain': domain,
         'is_trusted_domain': trusted,
         'suspicious_patterns': suspicious_patterns,
-        'risk_level': risk_level,
-        'qmail_score': qmail_score,
-        'phishing_detected': phishing_detected,
-        'phishtank_results': phishtank_results,
-        'links_found': len(links),
-        'suspicious_links': len(link_analysis.get("issues", []))
+        'risk_level': risk_level
     }
 
 def batch_analyze_emails(emails: List[Dict]) -> List[Dict]:

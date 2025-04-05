@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from flask import Flask, render_template, request, session, flash, redirect, url_for
 import os
-import json
 import logging
+from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
 from email_security import batch_analyze_emails
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_required, logout_user, current_user, login_user
@@ -52,126 +52,83 @@ app.register_blueprint(google_auth)
 
 @app.route('/', methods=['GET'])
 def index():
-    """Home page showing the Google login button."""
-    # Check if the user explicitly requested to go to the results page
-    if request.args.get('action') == 'results' and current_user.is_authenticated and 'credentials' in session:
-        # Only redirect to fetch emails if explicitly requested
-        return redirect(url_for('fetch_google_emails'))
-    
-    # Show the home page with Google login button
+    """Home page with email fetcher form."""
     return render_template('index.html')
 
-@app.route('/oauth_setup', methods=['GET'])
-def oauth_setup():
-    """Display setup instructions for Google OAuth."""
-    # Get the exact redirect URI from environment
-    replit_domain = os.environ.get('REPLIT_DOMAINS', '')
-    if replit_domain and ',' in replit_domain:
-        replit_domain = replit_domain.split(',')[0].strip()
+@app.route('/fetch', methods=['POST'])
+def fetch():
+    """Process the form and fetch emails."""
+    email_address = request.form.get('email')
+    password = request.form.get('password')
+    imap_server = request.form.get('imap_server')
+    provider = request.form.get('provider')
+    max_emails = int(request.form.get('max_emails', 10))
+    folder = request.form.get('folder', 'INBOX')
     
-    # If no domain was found, use the request host
-    if not replit_domain and request:
-        replit_domain = request.host
+    # Validate inputs
+    if not email_address or not password:
+        flash('Email and password are required.', 'danger')
+        return redirect(url_for('index'))
     
-    # Always use HTTP for the redirect URI (not HTTPS)
-    redirect_uri = f"http://{replit_domain}/google_login/callback"
+    # If IMAP server not provided, try to get it from the provider or auto-detect
+    if not imap_server:
+        if provider and provider != 'auto':
+            imap_server = get_imap_server(provider)
+        else:
+            imap_server = auto_detect_provider(email_address)
+            
+        if not imap_server:
+            flash('Could not determine IMAP server. Please specify it manually.', 'danger')
+            return redirect(url_for('index'))
     
-    # Get client ID for display
-    client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
-    
-    # Create a simple HTML template directly as a string
-    html = f"""<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Google OAuth Setup Instructions</title>
-    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
-    <style>
-        .code-block {{
-            background-color: #2c2c2c;
-            padding: 1rem;
-            border-radius: 4px;
-            font-family: monospace;
-            overflow-wrap: break-word;
-            word-wrap: break-word;
-        }}
-        .step {{
-            margin-bottom: 2rem;
-            border-left: 4px solid var(--bs-primary);
-            padding-left: 1rem;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container py-5">
-        <div class="row justify-content-center">
-            <div class="col-lg-8">
-                <div class="card border-info mb-4">
-                    <div class="card-header bg-info text-dark">
-                        <h2 class="h4 mb-0">Google OAuth Setup Instructions</h2>
-                    </div>
-                    <div class="card-body">
-                        <p class="lead">These instructions will help you properly configure Google OAuth for this application.</p>
-                        
-                        <div class="alert alert-warning">
-                            <strong>Problem:</strong> You're seeing a redirect_uri_mismatch or insecure_transport error because Google OAuth requires specific configuration.
-                        </div>
-                        
-                        <h4 class="mt-4 mb-3">Exact Redirect URI to Register:</h4>
-                        <div class="code-block mb-4 p-3">
-                            <strong>https://{replit_domain}/google_login/callback</strong>
-                        </div>
-                        <div class="alert alert-warning">
-                            <strong>Important:</strong> Make sure to use <strong>https://</strong> as shown above. Google OAuth requires secure redirect URIs.
-                        </div>
-                        
-                        <div class="step">
-                            <h5>Step 1: Go to Google Cloud Console</h5>
-                            <p>Open the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" class="text-info">Google Cloud Console Credentials page</a></p>
-                        </div>
-                        
-                        <div class="step">
-                            <h5>Step 2: Find your OAuth 2.0 Client ID</h5>
-                            <p>Locate your OAuth 2.0 Client ID {client_id if client_id else ""} and click the edit icon (pencil)</p>
-                        </div>
-                        
-                        <div class="step">
-                            <h5>Step 3: Add the Redirect URI</h5>
-                            <p>In the "Authorized redirect URIs" section, add the exact URI shown above</p>
-                            <p>Make sure to click "Save" after adding the URI</p>
-                            <div class="alert alert-info">
-                                <strong>Important:</strong> The URI must match EXACTLY, including the https:// prefix and /google_login/callback suffix
-                            </div>
-                        </div>
-                        
-                        <div class="step">
-                            <h5>Step 4: Enable the Gmail API</h5>
-                            <p>Go to the <a href="https://console.cloud.google.com/apis/library/gmail.googleapis.com" target="_blank" class="text-info">Gmail API in the API Library</a></p>
-                            <p>Click "Enable" if it's not already enabled</p>
-                        </div>
-                        
-                        <div class="step">
-                            <h5>Step 5: Try Again</h5>
-                            <p>Return to the application and try logging in again</p>
-                        </div>
-
-                        <div class="alert alert-warning mt-4">
-                            <strong>Note:</strong> Replit generates a new domain each time the repl is started or reloaded. You may need to update the redirect URI in Google Cloud Console whenever the Replit URL changes.
-                        </div>
-
-                        <div class="text-center mt-4">
-                            <a href="/" class="btn btn-primary">Return to Home Page</a>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</body>
-</html>"""
-    
-    return html
+    # Fetch emails
+    try:
+        emails_data = fetch_emails(
+            email_address=email_address,
+            password=password,
+            imap_server=imap_server,
+            max_emails=max_emails,
+            folder=folder
+        )
+        
+        # Check for errors
+        if emails_data and 'error' in emails_data[0]:
+            flash(f"Error fetching emails: {emails_data[0]['message']}", 'danger')
+            return redirect(url_for('index'))
+        
+        # Create a new email session in the database
+        email_session = EmailSession(
+            email_address=email_address,
+            provider=provider or 'auto-detected'
+        )
+        db.session.add(email_session)
+        db.session.flush()  # Generate ID for session
+        
+        # Store each email in the database
+        for email_data in emails_data:
+            email = Email(
+                session_id=email_session.id,
+                subject=email_data.get('subject', ''),
+                sender=email_data.get('from', ''),
+                date=email_data.get('date', ''),
+                body=email_data.get('body', ''),
+                error='error' in email_data,
+                error_message=email_data.get('message', '') if 'error' in email_data else None
+            )
+            db.session.add(email)
+        
+        # Commit all changes to database
+        db.session.commit()
+        
+        # Store only the session ID in the session cookie
+        session['email_session_id'] = email_session.id
+        
+        return redirect(url_for('results'))
+        
+    except Exception as e:
+        logger.error(f"Error in fetch_emails: {str(e)}")
+        flash(f"An error occurred: {str(e)}", 'danger')
+        return redirect(url_for('index'))
 
 @app.route('/results', methods=['GET'])
 def results():
@@ -198,7 +155,8 @@ def results():
     # Format the results to match the template expectations
     results = {
         'email_address': email_session.email_address,
-        'provider': 'Gmail (OAuth)',
+        'imap_server': 'Stored in database',
+        'folder': 'INBOX',
         'count': len(email_session.emails),
         'emails': analyzed_emails
     }
@@ -215,15 +173,12 @@ def fetch_google_emails():
         flash('Not authenticated with Google. Please log in.', 'warning')
         return redirect(url_for('index'))
     
-    # Set parameters from request
-    max_emails = request.args.get('max_emails', default=15, type=int)
-    offset = request.args.get('offset', default=0, type=int)
-    folder = request.args.get('folder', default='INBOX', type=str)
-    append = request.args.get('append', default='false', type=str).lower() == 'true'
+    # Set max emails
+    max_emails = request.args.get('max_emails', default=10, type=int)
     
     try:
         # Fetch emails using Gmail API
-        emails_data, error = fetch_gmail_messages(max_results=max_emails, offset=offset, folder=folder)
+        emails_data, error = fetch_gmail_messages(max_results=max_emails)
         
         if error:
             # Specific handling for the Gmail API not enabled error
@@ -242,33 +197,16 @@ def fetch_google_emails():
                 return redirect(url_for('index'))
         
         if not emails_data:
-            flash(f"No emails found in {folder}", 'warning')
-            if append:
-                # If appending, just return to results
-                return redirect(url_for('results'))
+            flash("No emails found", 'warning')
             return redirect(url_for('index'))
         
-        # Create a new email session or use existing one if appending
-        if append and 'email_session_id' in session:
-            email_session = EmailSession.query.get(session['email_session_id'])
-            if not email_session:
-                # If session was deleted, create a new one
-                email_session = EmailSession(
-                    email_address=session.get('user_email', 'Unknown Gmail user'),
-                    provider='gmail-oauth'
-                )
-                db.session.add(email_session)
-                db.session.flush()  # Generate ID for session
-                session['email_session_id'] = email_session.id
-        else:
-            # Create new session
-            email_session = EmailSession(
-                email_address=session.get('user_email', 'Unknown Gmail user'),
-                provider='gmail-oauth'
-            )
-            db.session.add(email_session)
-            db.session.flush()  # Generate ID for session
-            session['email_session_id'] = email_session.id
+        # Create a new email session in the database
+        email_session = EmailSession(
+            email_address=session.get('user_email', 'Unknown Gmail user'),
+            provider='gmail-oauth'
+        )
+        db.session.add(email_session)
+        db.session.flush()  # Generate ID for session
         
         # Store each email in the database
         for email_data in emails_data:
@@ -278,14 +216,7 @@ def fetch_google_emails():
                 sender=email_data.get('from', ''),
                 date=email_data.get('date', ''),
                 body=email_data.get('body', ''),
-                error=False,
-                email_metadata=json.dumps({
-                    'folder': email_data.get('folder', 'INBOX'),
-                    'labels': email_data.get('labels', []),
-                    'unread': email_data.get('unread', False),
-                    'important': email_data.get('important', False),
-                    'starred': email_data.get('starred', False),
-                })
+                error=False
             )
             db.session.add(email)
         
@@ -294,8 +225,6 @@ def fetch_google_emails():
         
         # Store only the session ID in the session cookie
         session['email_session_id'] = email_session.id
-        session['last_offset'] = offset + len(emails_data)
-        session['current_folder'] = folder
         
         return redirect(url_for('results'))
         

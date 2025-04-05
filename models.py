@@ -32,7 +32,6 @@ class Email(db.Model):
     body = Column(Text)
     error = Column(Boolean, default=False)
     error_message = Column(Text)
-    email_metadata = Column(Text)  # Stores JSON data for folder, labels, etc.
     
     # Relationship
     session = relationship("EmailSession", back_populates="emails")
@@ -40,37 +39,17 @@ class Email(db.Model):
     def __repr__(self):
         return f"<Email(id={self.id}, subject={self.subject})>"
     
-    def get_metadata(self):
-        """Get parsed metadata as a dictionary."""
-        if not self.email_metadata:
-            return {}
-        try:
-            import json
-            return json.loads(self.email_metadata)
-        except:
-            return {}
-    
     def to_dict(self):
         """Convert to dictionary format."""
-        metadata = self.get_metadata()
-        email_dict = {
+        return {
             'id': self.id,
             'subject': self.subject,
             'from': self.sender,
             'date': self.date,
             'body': self.body,
             'error': self.error,
-            'message': self.error_message if self.error else None,
-            'folder': metadata.get('folder', 'INBOX'),
-            'unread': metadata.get('unread', False),
-            'important': metadata.get('important', False),
-            'starred': metadata.get('starred', False)
+            'message': self.error_message if self.error else None
         }
-        
-        if 'labels' in metadata:
-            email_dict['labels'] = metadata['labels']
-            
-        return email_dict
 
 
 class User(UserMixin, db.Model):
@@ -80,7 +59,7 @@ class User(UserMixin, db.Model):
     id = Column(Integer, primary_key=True)
     username = Column(String(64), nullable=False)
     email = Column(String(120), unique=True, nullable=False)
-    profile_pic = Column(String(2048))
+    profile_pic = Column(String(255))
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def __repr__(self):

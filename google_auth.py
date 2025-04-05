@@ -12,10 +12,6 @@ from oauthlib.oauth2 import WebApplicationClient
 from main import db
 from models import User
 
-# This is required for working with Replit which uses HTTP instead of HTTPS in development
-# WARNING: This should NEVER be used in production!
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-
 # Configuration
 CLIENT_SECRETS_FILE = "client_secret.json"
 SCOPES = [
@@ -52,43 +48,11 @@ def google_login():
         
     # Set up the OAuth flow with the client secrets
     try:
-        # Get the Replit domain from environment
-        replit_domain = os.environ.get('REPLIT_DOMAINS')
-        if replit_domain:
-            if ',' in replit_domain:
-                domain_for_uri = replit_domain.split(',')[0].strip()
-            else:
-                domain_for_uri = replit_domain
-                
-            # Always use HTTPS for the redirect URI
-            # Google OAuth requires HTTPS for redirect URIs
-            redirect_uri = f"https://{domain_for_uri}/google_login/callback"
-            
-            # Override the REDIRECT_URI global
-            global REDIRECT_URI
-            REDIRECT_URI = redirect_uri
-            
-            # Recreate the client_config with the updated REDIRECT_URI
-            client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
-            client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
-            client_config = {
-                "web": {
-                    "client_id": client_id,
-                    "project_id": "",
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token",
-                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                    "client_secret": client_secret,
-                    "redirect_uris": [REDIRECT_URI]
-                }
-            }
-            with open(CLIENT_SECRETS_FILE, 'w') as f:
-                json.dump(client_config, f)
-        
-        # This will initialize or use our updated REDIRECT_URI
+        # This will initialize REDIRECT_URI global variable
         flow = get_oauth_flow()
         
         # Print the exact redirect URI that will be used
+        global REDIRECT_URI
         print(f"DEBUG - login_route - Using Redirect URI: {REDIRECT_URI}")
         print(f"DEBUG - login_route - Make sure this URI is EXACTLY registered in Google Cloud Console")
         
@@ -126,9 +90,7 @@ def callback():
             print(f"Expected URI in Google Console: {REDIRECT_URI}")
             print(f"Actual request URI: {current_uri}")
             
-            # Redirect to the setup page which will show detailed instructions
-            flash(f"OAuth Configuration Error: The redirect URI doesn't match what's configured in your Google Cloud Console. Please see the detailed setup instructions.", "danger")
-            return redirect(url_for("oauth_setup"))
+            flash("Authorization failed: The redirect URI doesn't match what's configured in Google Cloud Console. Please check the console output for details.", "danger")
         else:
             flash(f"Authorization failed: {error}", "danger")
         return redirect(url_for("index"))
@@ -150,15 +112,15 @@ def callback():
         print(f"Authorization response URL: {request.url}")
         print(f"Configured redirect URI: {REDIRECT_URI}")
         
-        # Don't try to convert between http and https - it causes issues
-        # Just use the URL as-is
+        # Fix the URL if it's http instead of https
         auth_response = request.url
-        print(f"Using auth response URL: {auth_response}")
+        if auth_response and REDIRECT_URI:
+            if auth_response.startswith('http:') and REDIRECT_URI.startswith('https:'):
+                auth_response = 'https:' + auth_response[5:]
+                print(f"Fixed auth response URL to: {auth_response}")
+        else:
+            print("Warning: auth_response or REDIRECT_URI is None")
         
-        # We need to ensure our environment understands HTTP is OK for development
-        os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-        
-        # Fetch the token
         flow.fetch_token(authorization_response=auth_response)
         
         # Get the credentials from the flow
@@ -211,31 +173,20 @@ def get_oauth_flow():
     # Determine the redirect URI based on the environment
     global REDIRECT_URI
     if not REDIRECT_URI:
-        # First try to get the domain from the request if available
-        if request and hasattr(request, 'host'):
-            host = request.host
-            # Always use HTTPS for Google Cloud Console compatibility
-            REDIRECT_URI = f"https://{host}/google_login/callback"
-            print(f"DEBUG - Using host-based redirect URI: {REDIRECT_URI}")
+        replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
+        if replit_domain:
+            # Use the exact domain from environment
+            # If it contains multiple domains (comma-separated), take the first one
+            if ',' in replit_domain:
+                replit_domain = replit_domain.split(',')[0].strip()
+            
+            REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
+            print(f"DEBUG - Using redirect URI: {REDIRECT_URI}")
+            print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
         else:
-            replit_domain = os.environ.get('REPLIT_DOMAINS')  # Note: it's DOMAINS with an 'S'
-            if replit_domain:
-                # Use the exact domain from environment
-                # If it contains multiple domains (comma-separated), take the first one
-                if ',' in replit_domain:
-                    replit_domain = replit_domain.split(',')[0].strip()
-                
-                # Always use HTTPS for Google Cloud Console compatibility
-                REDIRECT_URI = f"https://{replit_domain}/google_login/callback"
-                print(f"DEBUG - Using environment-based redirect URI: {REDIRECT_URI}")
-                print(f"DEBUG - Please make sure this exact URI is configured in Google Cloud Console")
-            else:
-                # Fallback to localhost with HTTPS
-                REDIRECT_URI = "https://localhost:5000/google_login/callback"
-                print("DEBUG - No Replit domain found, using localhost HTTPS redirect URI")
-    
-    print(f"FINAL REDIRECT URI: {REDIRECT_URI}")
-    print("Make sure this EXACT URI is registered in your Google Cloud Console!")
+            # Fallback to localhost
+            REDIRECT_URI = "http://localhost:5000/google_login/callback"
+            print("DEBUG - No Replit domain found, using localhost redirect URI")
     
     # Get client ID and client secret from environment variables
     client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
@@ -301,18 +252,8 @@ def get_credentials_from_session():
         scopes=creds_data['scopes']
     )
 
-def fetch_gmail_messages(max_results=50, offset=0, folder='INBOX'):
-    """
-    Fetch the user's Gmail messages using stored credentials.
-    
-    Args:
-        max_results: Maximum number of emails to fetch
-        offset: Number of emails to skip (for pagination)
-        folder: Gmail label/folder to fetch from (INBOX, SPAM, TRASH, etc.)
-        
-    Returns:
-        Tuple of (emails_data, error_message)
-    """
+def fetch_gmail_messages(max_results=10):
+    """Fetch the user's Gmail messages using stored credentials."""
     credentials = get_credentials_from_session()
     if not credentials:
         return None, "Not authenticated with Google"
@@ -321,49 +262,17 @@ def fetch_gmail_messages(max_results=50, offset=0, folder='INBOX'):
         # Build the Gmail API service
         service = build('gmail', 'v1', credentials=credentials)
         
-        # Convert folder names to Gmail labels
-        label_mapping = {
-            'INBOX': 'INBOX',
-            'SPAM': 'SPAM',
-            'JUNK': 'SPAM',  # Alias for SPAM
-            'TRASH': 'TRASH',
-            'DRAFTS': 'DRAFT',
-            'SENT': 'SENT',
-            'IMPORTANT': 'IMPORTANT',
-            'STARRED': 'STARRED',
-            'UNREAD': 'UNREAD',
-            'CATEGORY_PERSONAL': 'CATEGORY_PERSONAL',
-            'CATEGORY_SOCIAL': 'CATEGORY_SOCIAL',
-            'CATEGORY_PROMOTIONS': 'CATEGORY_PROMOTIONS',
-            'CATEGORY_UPDATES': 'CATEGORY_UPDATES',
-            'CATEGORY_FORUMS': 'CATEGORY_FORUMS',
-        }
-        
-        gmail_label = label_mapping.get(folder.upper(), 'INBOX')
-        
-        # Get a list of messages with optional label filter
-        query = f'label:{gmail_label}' if gmail_label != 'INBOX' else None
-        
-        # Get list of message IDs
-        results = service.users().messages().list(
-            userId='me', 
-            maxResults=max_results,
-            q=query,
-            pageToken=None if offset == 0 else f"p{offset}"  # Simplistic pagination
-        ).execute()
-        
+        # Get a list of messages
+        results = service.users().messages().list(userId='me', maxResults=max_results).execute()
         messages = results.get('messages', [])
         
         if not messages:
-            return [], f"No messages found in {folder}"
+            return [], "No messages found"
         
         # Fetch details for each message
         emails = []
         for message in messages:
             msg = service.users().messages().get(userId='me', id=message['id'], format='full').execute()
-            
-            # Get labels for the message
-            labels = msg.get('labelIds', [])
             
             # Extract email details
             headers = msg['payload']['headers']
@@ -392,25 +301,6 @@ def fetch_gmail_messages(max_results=50, offset=0, folder='INBOX'):
                 if data:
                     body += base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
             
-            # Determine folder/category based on labels
-            message_folder = 'INBOX'
-            if 'SPAM' in labels:
-                message_folder = 'SPAM'
-            elif 'TRASH' in labels:
-                message_folder = 'TRASH'
-            elif 'DRAFT' in labels:
-                message_folder = 'DRAFTS'
-            elif 'SENT' in labels:
-                message_folder = 'SENT'
-            elif 'CATEGORY_PROMOTIONS' in labels:
-                message_folder = 'PROMOTIONS'
-            elif 'CATEGORY_SOCIAL' in labels:
-                message_folder = 'SOCIAL'
-            elif 'CATEGORY_FORUMS' in labels:
-                message_folder = 'FORUMS'
-            elif 'CATEGORY_UPDATES' in labels:
-                message_folder = 'UPDATES'
-            
             # Add the email to the list
             emails.append({
                 'id': msg['id'],
@@ -418,11 +308,6 @@ def fetch_gmail_messages(max_results=50, offset=0, folder='INBOX'):
                 'from': sender,
                 'date': date,
                 'body': body,
-                'folder': message_folder,
-                'labels': labels,
-                'unread': 'UNREAD' in labels,
-                'important': 'IMPORTANT' in labels,
-                'starred': 'STARRED' in labels,
             })
         
         return emails, None
