@@ -1,46 +1,23 @@
 #!/usr/bin/env python3
-from flask import Flask, render_template, request, session, flash, redirect, url_for
+from flask import render_template, request, session, flash, redirect, url_for
 import os
 import logging
 from email_fetcher import fetch_emails, auto_detect_provider, get_imap_server
 # Import analysis methods
 from email_security import batch_analyze_emails as rule_based_analyze_emails
-# Import the new hybrid AI analyzer that combines OpenAI with rule-based fallback
-from hybrid_ai_analyzer import batch_analyze_emails as ai_analyze_emails
-from flask_sqlalchemy import SQLAlchemy
-from flask_login import LoginManager, login_required, logout_user, current_user, login_user
-from sqlalchemy.orm import DeclarativeBase
+# Import the new hybrid AI analyzer that combines OpenAI with rule-based fallback (full content analysis)
+from hybrid_ai_analyzer import batch_analyze_emails as full_ai_analyze_emails
+# Import the headers-only AI analyzer for privacy-focused analysis
+from headers_only_ai_analyzer import batch_analyze_emails as headers_only_ai_analyze_emails
+from flask_login import login_required, logout_user, current_user, login_user
 
-# Configure logging
-logging.basicConfig(level=logging.DEBUG,
-                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-# Database setup
-class Base(DeclarativeBase):
-    pass
-
-db = SQLAlchemy(model_class=Base)
-login_manager = LoginManager()
-
-# Create the Flask application
-app = Flask(__name__)
-app.secret_key = os.environ.get("SESSION_SECRET", os.urandom(24))
-
-# Configure the database
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URL")
-app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-    "pool_recycle": 300,
-    "pool_pre_ping": True,
-}
-# Initialize the app with the extensions
-db.init_app(app)
-login_manager.init_app(app)
-login_manager.login_view = 'index'
+# Import the database and app setup from the new module
+from db_setup import app, db, login_manager, logger
 
 # Import models and create tables
+from models import EmailSession, Email, User
+
 with app.app_context():
-    from models import EmailSession, Email, User
     db.create_all()
 
 # User loader for Flask-Login
@@ -139,6 +116,10 @@ def results():
     # Get session ID from the session
     session_id = session.get('email_session_id')
     
+    # Check if we're being redirected with the 'ai' and 'full_content' flags
+    use_ai = request.args.get('ai', 'false').lower() == 'true'
+    full_content = request.args.get('full_content', 'false').lower() == 'true'
+    
     if not session_id:
         flash('No email results found. Please fetch emails first.', 'warning')
         return redirect(url_for('index'))
@@ -151,24 +132,34 @@ def results():
         session.pop('email_session_id', None)
         return redirect(url_for('index'))
     
-    # Check if AI analysis is requested or use traditional analysis
-    use_ai = request.args.get('ai', 'false').lower() == 'true'
-    
     # Get email data from database
     email_list = [email.to_dict() for email in email_session.emails]
     
-    # Perform security analysis
+    # Import all analyzer modules at the beginning to avoid issues with fallback
+    from email_security import batch_analyze_emails as rule_based_analyze_emails
+    from headers_only_ai_analyzer import batch_analyze_emails as headers_only_ai_analyze_emails
+    from simple_ai_analyzer import batch_analyze_emails as full_ai_analyze_emails
+    
+    # Perform security analysis based on user settings
     try:
         if use_ai:
-            logger.info("Using AI-based email analysis")
-            analyzed_emails = ai_analyze_emails(email_list)
+            if full_content:
+                # Full content AI analysis - sends the entire email to AI
+                logger.info("Using full-content AI-based email analysis")
+                analyzed_emails = full_ai_analyze_emails(email_list)
+            else:
+                # Headers-only AI analysis for enhanced privacy
+                logger.info("Using headers-only AI-based email analysis")
+                analyzed_emails = headers_only_ai_analyze_emails(email_list)
         else:
+            # Traditional rule-based analysis - no AI
             logger.info("Using rule-based email analysis")
             analyzed_emails = rule_based_analyze_emails(email_list)
     except Exception as e:
         logger.error(f"Error in email analysis: {str(e)}")
         # Fallback to rule-based analysis if AI analysis fails
         try:
+            logger.info("Falling back to rule-based analysis")
             analyzed_emails = rule_based_analyze_emails(email_list)
             flash("AI analysis failed. Showing results from rule-based analysis instead.", "warning")
         except Exception as e2:
@@ -183,21 +174,33 @@ def results():
         'folder': 'INBOX',
         'count': len(email_session.emails),
         'emails': analyzed_emails,
-        'using_ai': use_ai
+        'using_ai': use_ai,
+        'full_content': full_content
     }
     
     return render_template('results.html', results=results)
 
 @app.route('/analyze_with_ai', methods=['GET'])
 def analyze_with_ai():
-    """Run AI analysis on already fetched emails."""
+    """Run headers-only AI analysis on already fetched emails."""
     session_id = session.get('email_session_id')
     
     if not session_id:
         flash('No emails to analyze. Please fetch emails first.', 'warning')
         return redirect(url_for('index'))
     
-    return redirect(url_for('results', ai='true'))
+    return redirect(url_for('results', ai='true', full_content='false'))
+
+@app.route('/analyze_with_full_ai', methods=['GET'])
+def analyze_with_full_ai():
+    """Run full-content AI analysis on already fetched emails."""
+    session_id = session.get('email_session_id')
+    
+    if not session_id:
+        flash('No emails to analyze. Please fetch emails first.', 'warning')
+        return redirect(url_for('index'))
+    
+    return redirect(url_for('results', ai='true', full_content='true'))
 
 @app.route('/fetch_google_emails', methods=['GET'])
 @login_required

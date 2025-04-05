@@ -1,5 +1,5 @@
 from datetime import datetime
-from main import db
+from db_setup import db
 from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from flask_login import UserMixin

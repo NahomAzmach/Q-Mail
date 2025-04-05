@@ -9,7 +9,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import Flow
 from oauthlib.oauth2 import WebApplicationClient
-from main import db
+from db_setup import db, logger
 from models import User
 
 # Configuration
