@@ -28,25 +28,85 @@ SUSPICIOUS_KEYWORDS = [
     "phishing", "nigerian", "foreign prince", "investor", "business proposal"
 ]
 
-# Common trusted email domains (for demonstration)
+# Common trusted email domains
 TRUSTED_DOMAINS = [
-    # Major email providers - ensure these are always trusted
-    "gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", 
-    "protonmail.com", "aol.com", "zoho.com", "mail.com", "yandex.com", "me.com",
+    # Google/Alphabet
+    "gmail.com", "googlemail.com", "google.com",
     
-    # Major tech companies
-    "microsoft.com", "apple.com", "amazon.com", "facebook.com", "google.com",
-    "linkedin.com", "twitter.com", "instagram.com", "paypal.com", 
+    # Microsoft
+    "microsoft.com", "outlook.com", "live.com", "hotmail.com",
+    
+    # Apple
+    "apple.com", "icloud.com", "me.com",
+    
+    # Amazon
+    "amazon.com",
+    
+    # Meta (Facebook)
+    "facebook.com", "instagram.com", "messenger.com", 
+    
+    # Microsoft subsidiary
+    "linkedin.com",
+    
+    # Twitter
+    "twitter.com",
+    
+    # Adobe
+    "adobe.com",
+    
+    # IBM
+    "ibm.com",
+    
+    # Oracle
+    "oracle.com",
+    
+    # Intel
+    "intel.com",
+    
+    # Cisco
+    "cisco.com",
+    
+    # Salesforce
+    "salesforce.com",
+    
+    # PayPal
+    "paypal.com",
+    
+    # Dropbox
+    "dropbox.com",
+    
+    # Uber
+    "uber.com",
+    
+    # Airbnb
+    "airbnb.com",
+    
+    # Netflix
+    "netflix.com",
+    
+    # Spotify
+    "spotify.com",
+    
+    # Yahoo
+    "yahoo.com",
+    
+    # AOL
+    "aol.com",
+    
+    # Other popular providers
+    "protonmail.com", "zoho.com", "mail.com", "yandex.com",
+    
+    # Telecom and Media Providers
+    "verizon.com", "comcast.com", "att.com",
+    
+    # Other popular services
+    "github.com", "gitlab.com", "stackoverflow.com", "slack.com", "zoom.us",
     
     # Financial services
     "chase.com", "bankofamerica.com", "wellsfargo.com", "citibank.com", "capitalone.com",
-    "amex.com", "discover.com", "visa.com", "mastercard.com", 
+    "amex.com", "discover.com", "visa.com", "mastercard.com",
     
-    # Popular services
-    "netflix.com", "hulu.com", "spotify.com", "github.com", "gitlab.com", "stackoverflow.com",
-    "adobe.com", "dropbox.com", "salesforce.com", "slack.com", "zoom.us",
-    
-    # Common TLDs for legitimate organizations
+    # Educational, Government and Military
     "edu", "gov", "mil"
 ]
 
@@ -289,22 +349,38 @@ def calculate_risk_level(
     risk_score = 0
     
     # Major email providers get a strong trust bonus
-    major_email_providers = ["gmail.com", "googlemail.com", "outlook.com", "hotmail.com", 
-                             "yahoo.com", "icloud.com", "protonmail.com"]
+    major_email_providers = [
+        "gmail.com", "googlemail.com", "google.com", 
+        "outlook.com", "hotmail.com", "live.com", "microsoft.com",
+        "yahoo.com", "icloud.com", "me.com", "protonmail.com"
+    ]
     
-    # If it's a trusted domain, subtract from risk score (improves security score)
+    # Check if the domain is one of the major providers, even if is_trusted_domain is False
+    # This ensures we don't miss trusted providers due to implementation issues
+    is_major_provider = sender_domain in major_email_providers
+    
+    # If the is_trusted_domain flag didn't catch it but it's a major provider, override
+    if is_major_provider:
+        is_trusted_domain = True
+    
+    # Force override for Gmail and other major Google domains
+    if sender_domain in ["gmail.com", "googlemail.com", "google.com"]:
+        is_trusted_domain = True
+        is_major_provider = True
+    
+    # Apply trust bonuses
     if is_trusted_domain:
         # Give major providers a stronger bonus
-        if sender_domain in major_email_providers:
-            risk_score -= 20  # Higher trust for major email providers
+        if is_major_provider:
+            risk_score -= 25  # Higher trust for major email providers
         else:
-            risk_score -= 10  # Standard trust for other trusted domains
+            risk_score -= 15  # Standard trust for other trusted domains
     else:
         # Unknown domains start with a penalty
         risk_score += 20
     
     # Check for suspicious keywords - if keywords are common security terms, reduce penalty
-    common_security_terms = ["security", "alert", "notification", "update", "verify"]
+    common_security_terms = ["security", "alert", "notification", "update", "verify", "confirm"]
     
     # Track whether we've applied security term adjustment
     security_term_adjusted = False
@@ -325,15 +401,30 @@ def calculate_risk_level(
             risk_score += keyword_penalty
             
         elif element["type"] == "suspicious_patterns":
-            risk_score += min(len(element.get("patterns", [])) * 8, 30)  # Reduced impact
+            pattern_penalty = min(len(element.get("patterns", [])) * 8, 30)
+            
+            # Reduce penalty for trusted domains
+            if is_trusted_domain and is_major_provider:
+                pattern_penalty = max(0, pattern_penalty - 15)
+                
+            risk_score += pattern_penalty
             
         elif element["type"] == "suspicious_urls":
-            risk_score += min(len(element.get("urls", [])) * 15, 50)
+            url_penalty = min(len(element.get("urls", [])) * 15, 50)
+            
+            # Reduce penalty for trusted domains
+            if is_trusted_domain and is_major_provider:
+                url_penalty = max(0, url_penalty - 20)
+                
+            risk_score += url_penalty
             
         elif element["type"] == "grammatical_errors":
-            # If trusted domain, reduce grammar error penalty (legitimate emails can have errors too)
+            # If trusted domain, significantly reduce grammar error penalty
             if is_trusted_domain:
-                risk_score += 10  # Reduced penalty for trusted domains
+                if is_major_provider:
+                    risk_score += 5  # Minimal penalty for major providers
+                else:
+                    risk_score += 10  # Reduced penalty for trusted domains
             else:
                 risk_score += 20
     
@@ -342,9 +433,12 @@ def calculate_risk_level(
     # where 10 is most secure
     security_score = max(0, min(10, 10 - (risk_score / 10)))
     
-    # For trusted domains like Gmail, ensure minimum security score
-    if sender_domain in major_email_providers and security_score < 7:
-        security_score = max(security_score, 7.0)  # Ensure major providers get at least 7/10
+    # For major providers, enforce higher minimum scores
+    if is_major_provider:
+        if sender_domain in ["gmail.com", "googlemail.com", "google.com"]:
+            security_score = max(security_score, 8.0)  # Google domains get at least 8/10
+        else:
+            security_score = max(security_score, 7.0)  # Other major providers get at least 7/10
     
     # Determine risk level based on the new scale
     if security_score >= 8:
@@ -422,7 +516,20 @@ def analyze_email_with_rules(email_data: Dict[str, Any]) -> Dict[str, Any]:
         
         # Extract and check sender domain
         sender_domain = extract_domain_from_email(sender)
+        
+        # Check if domain is in our trusted domains list
         is_trusted_domain = sender_domain in TRUSTED_DOMAINS
+        
+        # Special handling for Gmail and other major providers to ensure they're always trusted
+        major_email_providers = [
+            "gmail.com", "googlemail.com", "google.com", 
+            "outlook.com", "hotmail.com", "live.com", "microsoft.com",
+            "yahoo.com", "icloud.com", "me.com", "protonmail.com"
+        ]
+        
+        # Additional verification for major providers - force trust them
+        if sender_domain in major_email_providers:
+            is_trusted_domain = True
         
         # Analyze email content
         suspicious_elements = check_email_content(subject, body)

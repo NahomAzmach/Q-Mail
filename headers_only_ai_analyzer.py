@@ -119,6 +119,16 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
         # Extract domain for analysis
         sender_domain = extract_domain_from_email(sender)
         
+        # Major email providers that should always be trusted
+        major_email_providers = [
+            "gmail.com", "googlemail.com", "google.com", 
+            "outlook.com", "hotmail.com", "live.com", "microsoft.com",
+            "yahoo.com", "icloud.com", "me.com", "protonmail.com"
+        ]
+        
+        # Check if this is a major provider that we should always trust
+        is_major_provider = sender_domain in major_email_providers
+        
         # Create prompt for OpenAI using ONLY headers (no body content)
         prompt = f"""
         You are an expert email security analyst with deep knowledge of phishing tactics and email security threats.
@@ -146,12 +156,8 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
         - "recommendations": suggested actions for the recipient
         """
         
-        # Use OpenAI's official client instead of direct requests
-        try:
-            import openai
-        except ImportError:
-            logger.error("OpenAI library not installed. Please install with 'pip install openai'")
-            return analyze_email_with_rules(email_data)
+        # OpenAI is now installed by our packager_tool
+        import openai
             
         # Initialize client with retry logic
         client = openai.OpenAI(api_key=api_key)
@@ -253,11 +259,20 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
             else:
                 recommendations = ["Be cautious with emails from unfamiliar senders."]
                 
+        # Force-trust major email providers regardless of OpenAI analysis
+        if is_major_provider:
+            is_trusted = True
+            # Ensure minimum security score for major providers
+            security_score = max(analysis.get("security_score", 5), 8.0 if sender_domain == "gmail.com" else 7.0)
+        else:
+            is_trusted = analysis.get("is_trusted_sender", False)
+            security_score = analysis.get("security_score", 5)
+        
         security_analysis = {
             "sender_domain": extract_domain_from_email(sender),
-            "is_trusted_domain": analysis.get("is_trusted_sender", False),
+            "is_trusted_domain": is_trusted,
             "suspicious_patterns": analysis.get("suspicious_patterns_detected", []),
-            "security_score": analysis.get("security_score", 5),
+            "security_score": security_score,
             "risk_level": analysis.get("risk_level", "Unknown"),
             "explanation": analysis.get("explanation", ""),
             "recommendations": recommendations
