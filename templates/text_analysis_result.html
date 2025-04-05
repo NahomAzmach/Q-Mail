@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Analysis Results</title>
+    <link rel="stylesheet" href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        .security-score {
+            font-size: 2.5rem;
+            font-weight: bold;
+            text-align: center;
+            padding: 1rem;
+            border-radius: 50%;
+            width: 80px;
+            height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem auto;
+        }
+        .score-dangerous { background-color: rgba(220, 53, 69, 0.25); color: #dc3545; }
+        .score-suspicious { background-color: rgba(255, 193, 7, 0.25); color: #ffc107; }
+        .score-cautious { background-color: rgba(255, 193, 7, 0.15); color: #ffc107; }
+        .score-probably-safe { background-color: rgba(25, 135, 84, 0.15); color: #198754; }
+        .score-secure { background-color: rgba(25, 135, 84, 0.25); color: #198754; }
+        
+        .recommendation-list {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+        }
+        
+        .text-content-display {
+            white-space: pre-wrap;
+            font-family: monospace;
+            padding: 1rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-4">
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h1 class="h3 mb-0">Text Analysis Results</h1>
+                        <div>
+                            <a href="{{ url_for('text_analyzer_page') }}" class="btn btn-outline-secondary me-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left me-1" viewBox="0 0 16 16">
+                                    <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+                                </svg>
+                                Back
+                            </a>
+                            <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-envelope me-1" viewBox="0 0 16 16">
+                                    <path d="M0 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V4Zm2-1a1 1 0 0 0-1 1v.217l7 4.2 7-4.2V4a1 1 0 0 0-1-1H2Zm13 2.383-4.708 2.825L15 11.105V5.383Zm-.034 6.876-5.64-3.471L8 9.583l-1.326-.795-5.64 3.47A1 1 0 0 0 2 13h12a1 1 0 0 0 .966-.741ZM1 11.105l4.708-2.897L1 5.383v5.722Z"/>
+                                </svg>
+                                Home
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+                        
+                        <!-- Security Score -->
+                        <div class="row mb-4">
+                            <div class="col-md-4">
+                                <!-- Score display -->
+                                {% set score = analysis.security_score|default(5) %}
+                                {% if score < 2 %}
+                                    {% set score_class = 'score-dangerous' %}
+                                    {% set score_text = 'Dangerous' %}
+                                    {% set score_badge_class = 'bg-danger' %}
+                                {% elif score < 4 %}
+                                    {% set score_class = 'score-suspicious' %}
+                                    {% set score_text = 'Suspicious' %}
+                                    {% set score_badge_class = 'bg-warning text-dark' %}
+                                {% elif score < 6 %}
+                                    {% set score_class = 'score-cautious' %}
+                                    {% set score_text = 'Cautious' %}
+                                    {% set score_badge_class = 'bg-warning text-dark' %}
+                                {% elif score < 8 %}
+                                    {% set score_class = 'score-probably-safe' %}
+                                    {% set score_text = 'Probably Safe' %}
+                                    {% set score_badge_class = 'bg-success' %}
+                                {% else %}
+                                    {% set score_class = 'score-secure' %}
+                                    {% set score_text = 'Secure' %}
+                                    {% set score_badge_class = 'bg-success' %}
+                                {% endif %}
+                                
+                                <div class="text-center">
+                                    <div class="security-score {{ score_class }}">
+                                        {{ score }}
+                                    </div>
+                                    <div><small class="text-muted">out of 10</small></div>
+                                    <div class="mt-2">
+                                        <span class="badge {{ score_badge_class }}">{{ analysis.risk_level|default(score_text) }}</span>
+                                        {% if use_ai %}
+                                            <span class="badge bg-info">AI Analysis</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Rule-Based</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <h4 class="mb-3">Security Analysis</h4>
+                                
+                                <p>{{ analysis.explanation|default('No detailed explanation available.') }}</p>
+                                
+                                {% if analysis.recommendations %}
+                                    <h5 class="mt-3">Recommendations</h5>
+                                    
+                                    <!-- Check if recommendations is a string or a list -->
+                                    {% if analysis.recommendations is string %}
+                                        <ul class="recommendation-list">
+                                            {% for line in analysis.recommendations.split('\n') %}
+                                                {% if line.strip() %}
+                                                    <li>{{ line.strip() }}</li>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </ul>
+                                    {% else %}
+                                        <ul class="recommendation-list">
+                                            {% for rec in analysis.recommendations %}
+                                                <li>{{ rec }}</li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        <!-- Message Content -->
+                        <div class="mt-4">
+                            <h4>Analyzed Text Message</h4>
+                            {% if analysis.sender %}
+                                <p><strong>From:</strong> {{ analysis.sender }}</p>
+                            {% endif %}
+                            <div class="text-content-display">{{ analysis.content }}</div>
+                        </div>
+                        
+                        <!-- Back to new analysis button -->
+                        <div class="mt-4">
+                            <a href="{{ url_for('text_analyzer_page') }}" class="btn btn-primary">
+                                Analyze Another Message
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
