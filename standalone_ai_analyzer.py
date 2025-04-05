@@ -729,16 +729,34 @@ def ensure_domain_field_and_trusted_domains(result: Dict[str, Any]) -> Dict[str,
     # Handle trusted domains logic
     domain = processed['sender_domain']
     
+    # TLD credibility scores
+    TRUSTED_TLDS = {
+        'com': 0.5,    # Commercial, widely used
+        'org': 0.5,    # Non-profit organizations
+        'edu': 1.0,    # Educational institutions (higher trust)
+        'gov': 1.0,    # Government agencies (higher trust)
+        'net': 0.3,    # Network services
+        'co': 0.3,     # Commercial alternative
+        'io': 0.3      # Technology companies
+    }
+    
     # Check for exact domain match first
     trusted_match = None
     min_score = 5.0
+    tld_bonus = 0
+    
+    # Extract TLD from domain for additional trust assessment
+    domain_parts = domain.split('.')
+    if len(domain_parts) >= 2:
+        tld = domain_parts[-1].lower()
+        if tld in TRUSTED_TLDS:
+            tld_bonus = TRUSTED_TLDS[tld]
     
     if domain in TRUSTED_DOMAINS:
         trusted_match = domain
         min_score = TRUSTED_DOMAINS[domain]
     else:
         # Check if it's a subdomain of a trusted domain
-        domain_parts = domain.split('.')
         if len(domain_parts) > 2:
             # Try to match the main domain (e.g., "google.com" from "accounts.google.com")
             potential_main_domain = '.'.join(domain_parts[-2:])
@@ -748,6 +766,15 @@ def ensure_domain_field_and_trusted_domains(result: Dict[str, Any]) -> Dict[str,
                 # Slightly reduce the score for subdomains we don't explicitly trust
                 if domain not in TRUSTED_DOMAINS:
                     min_score = max(5.0, min_score - 0.5)
+    
+    # Apply TLD bonus if no exact domain match was found
+    tld_note = ""
+    if not trusted_match and tld_bonus > 0:
+        # Only apply TLD bonus if the domain wasn't already trusted
+        new_score = min(10.0, processed['security_score'] + tld_bonus)
+        if new_score > processed['security_score']:
+            processed['security_score'] = new_score
+            tld_note = f" [TRUSTED TLD BONUS: +{tld_bonus}]"
     
     if trusted_match:
         # Mark as trusted
@@ -764,7 +791,10 @@ def ensure_domain_field_and_trusted_domains(result: Dict[str, Any]) -> Dict[str,
                 trusted_prefix = f"[TRUSTED SUBDOMAIN OF {trusted_match}: {domain}]"
                 
             if trusted_prefix not in processed['explanation']:
-                processed['explanation'] = f"{trusted_prefix} {processed['explanation']}"
+                processed['explanation'] = f"{trusted_prefix}{tld_note} {processed['explanation']}"
+    elif tld_note and tld_note not in processed['explanation']:
+        # Add TLD trust note if applicable
+        processed['explanation'] = f"{tld_note} {processed['explanation']}"
     
     # Ensure risk level matches security score
     score = processed['security_score']
