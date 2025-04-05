@@ -76,31 +76,31 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
         - "recommendations": suggested actions for the recipient
         """
         
-        # Direct API call using requests instead of the OpenAI client
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}"
-        }
-        
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [{"role": "user", "content": prompt}],
-            "temperature": 0.0
-        }
-        
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=5  # Short timeout to avoid worker timeouts
-        )
-        
-        if response.status_code != 200:
-            logger.warning(f"OpenAI API returned status code {response.status_code}")
+        # Use OpenAI's official client instead of direct requests
+        try:
+            import openai
+        except ImportError:
+            logger.error("OpenAI library not installed. Please install with 'pip install openai'")
             return analyze_email_with_rules(email_data)
+            
+        # Initialize client with retry logic
+        client = openai.OpenAI(api_key=api_key)
         
-        response_json = response.json()
-        analysis_text = response_json["choices"][0]["message"]["content"]
+        try:
+            # Use a shorter timeout and simpler model to avoid worker timeouts
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",  # Use a more stable model
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                timeout=3.5  # Shorter timeout
+            )
+            
+            # Get response content
+            analysis_text = response.choices[0].message.content
+            
+        except Exception as api_error:
+            logger.warning(f"OpenAI API call failed: {str(api_error)}")
+            return analyze_email_with_rules(email_data)
         
         # Parse JSON from response
         json_match = re.search(r'\{.*\}', analysis_text, re.DOTALL)

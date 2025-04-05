@@ -102,9 +102,10 @@ def analyze_email_with_openai(email_data: Dict[str, Any]) -> Dict[str, Any]:
                 
                 client = openai.OpenAI(api_key=api_key)
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini",
+                    model="gpt-3.5-turbo",  # Use a more stable model
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.0
+                    temperature=0.0,
+                    timeout=3.5  # Shorter timeout
                 )
                 
                 # Get response content
@@ -201,19 +202,28 @@ def batch_analyze_emails_with_openai(emails: List[Dict[str, Any]]) -> List[Dict[
             logger.warning("OPENAI_API_KEY not found in environment variables")
             return rule_based_batch_analysis(emails)
         
-        # Process emails one by one to avoid timeout issues
+        # Only process a limited number of emails with OpenAI to avoid timeouts
+        # This is a limitation to keep the app responsive - only the first 3 emails use OpenAI
+        max_ai_analysis = 3
+        processed_count = 0
         analyzed_emails = []
         
         for i, email in enumerate(emails):
             try:
-                # Add security analysis to the email
-                security_analysis = analyze_email_with_openai(email)
+                if processed_count < max_ai_analysis:
+                    # Use OpenAI for the first few emails
+                    security_analysis = analyze_email_with_openai(email)
+                    processed_count += 1
+                else:
+                    # Use rule-based for the rest
+                    security_analysis = rule_based_analysis(email)
+                
                 email["security_analysis"] = security_analysis
                 analyzed_emails.append(email)
                 
                 # Add a small delay between API calls to avoid rate limits
-                if i < len(emails) - 1:
-                    time.sleep(0.5)
+                if processed_count < max_ai_analysis and i < len(emails) - 1:
+                    time.sleep(0.2)
                     
             except Exception as e:
                 logger.error(f"Error analyzing email {i+1}: {str(e)}")
