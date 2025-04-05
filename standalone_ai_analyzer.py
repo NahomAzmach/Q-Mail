@@ -728,17 +728,41 @@ def ensure_domain_field_and_trusted_domains(result: Dict[str, Any]) -> Dict[str,
     
     # Handle trusted domains logic
     domain = processed['sender_domain']
+    
+    # Check for exact domain match first
+    trusted_match = None
+    min_score = 5.0
+    
     if domain in TRUSTED_DOMAINS:
+        trusted_match = domain
+        min_score = TRUSTED_DOMAINS[domain]
+    else:
+        # Check if it's a subdomain of a trusted domain
+        domain_parts = domain.split('.')
+        if len(domain_parts) > 2:
+            # Try to match the main domain (e.g., "google.com" from "accounts.google.com")
+            potential_main_domain = '.'.join(domain_parts[-2:])
+            if potential_main_domain in TRUSTED_DOMAINS:
+                trusted_match = potential_main_domain
+                min_score = TRUSTED_DOMAINS[potential_main_domain]
+                # Slightly reduce the score for subdomains we don't explicitly trust
+                if domain not in TRUSTED_DOMAINS:
+                    min_score = max(5.0, min_score - 0.5)
+    
+    if trusted_match:
         # Mark as trusted
         processed['is_trusted_domain'] = True
         
         # Ensure minimum security score
-        min_score = TRUSTED_DOMAINS[domain]
         if processed['security_score'] < min_score:
             processed['security_score'] = min_score
             
             # Add trusted domain note to explanation if not already there
-            trusted_prefix = f"[TRUSTED DOMAIN: {domain}]"
+            if trusted_match == domain:
+                trusted_prefix = f"[TRUSTED DOMAIN: {domain}]"
+            else:
+                trusted_prefix = f"[TRUSTED SUBDOMAIN OF {trusted_match}: {domain}]"
+                
             if trusted_prefix not in processed['explanation']:
                 processed['explanation'] = f"{trusted_prefix} {processed['explanation']}"
     
