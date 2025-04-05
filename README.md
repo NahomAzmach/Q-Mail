@@ -1,4 +1,6 @@
-![QMail Logo](static/image.png)
+<div style="text-align: right; margin-bottom: 30px;">
+  <img src="static/image.png" alt="QMail Logo" width="250" style="max-width: 100%;">
+</div>
 
 # QMail
 
