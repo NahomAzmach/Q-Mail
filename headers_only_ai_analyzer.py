@@ -1,8 +1,9 @@
 """
-Headers-only AI Email Analyzer.
+Headers-only AI Email Analyzer with Hybrid Analysis.
 
 This module provides a security analysis focusing ONLY on email headers for enhanced privacy.
 It uses OpenAI for analysis but only sends the sender, subject, and date - never the email body.
+It combines AI analysis with rule-based pattern detection for more comprehensive security scoring.
 """
 
 import os
@@ -13,16 +14,85 @@ import re
 import requests
 from typing import Dict, List, Any, Optional
 
-# Import standalone analyzer for fallback
+# Import standalone analyzer for rule-based analysis
 from standalone_ai_analyzer import (
     analyze_email_with_rules, 
     batch_analyze_emails_with_rules,
-    extract_domain_from_email
+    extract_domain_from_email,
+    check_email_content,
+    calculate_risk_level
 )
+
+# Import email security module for suspicious pattern detection
+from email_security import check_for_suspicious_patterns
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def hybrid_analyze_email(email_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Analyze email using both rules-based and AI analysis, but only send headers to AI.
+    This hybrid approach combines the strengths of both methods for better accuracy.
+    
+    Args:
+        email_data: Dictionary containing email data
+        
+    Returns:
+        Dictionary with combined security analysis results
+    """
+    # First, get rule-based analysis on headers and subject
+    subject = email_data.get('subject', '')
+    sender = email_data.get('from', '')
+    
+    # Check for suspicious patterns in the subject line only
+    rule_based_suspicious_patterns = check_for_suspicious_patterns(subject, '')
+    
+    # Now get AI analysis on headers only
+    ai_analysis = analyze_email_with_openai_headers_only(email_data)
+    
+    # Combine the analyses: We'll use AI analysis as base but adjust the security score
+    # based on rule-based findings, and add any suspicious patterns found
+    
+    # Get original AI score
+    ai_score = ai_analysis.get('security_score', 5.0)
+    
+    # Adjust score based on subject pattern findings (if AI missed them)
+    # Each suspicious pattern reduces the score by 0.5 points, up to 2 points
+    pattern_penalty = min(len(rule_based_suspicious_patterns) * 0.5, 2.0)
+    adjusted_score = max(1.0, ai_score - pattern_penalty)
+    
+    # Update the AI analysis with our hybrid findings
+    ai_analysis['security_score'] = adjusted_score
+    
+    # Add any suspicious patterns found by rule-based system that weren't detected by AI
+    ai_suspicious_patterns = ai_analysis.get('suspicious_patterns', [])
+    combined_patterns = list(ai_suspicious_patterns)
+    
+    for pattern in rule_based_suspicious_patterns:
+        pattern_description = f"Suspicious pattern in subject: {pattern}"
+        if pattern_description not in combined_patterns:
+            combined_patterns.append(pattern_description)
+    
+    ai_analysis['suspicious_patterns'] = combined_patterns
+    
+    # Update risk level based on adjusted score
+    if adjusted_score >= 8:
+        ai_analysis['risk_level'] = "Secure"
+    elif adjusted_score >= 5:
+        ai_analysis['risk_level'] = "Cautious"
+    elif adjusted_score >= 2:
+        ai_analysis['risk_level'] = "Unsafe"
+    else:
+        ai_analysis['risk_level'] = "Dangerous"
+    
+    # Add explanation about hybrid analysis
+    if ai_analysis['explanation']:
+        ai_analysis['explanation'] = "HYBRID ANALYSIS: " + ai_analysis['explanation']
+        if rule_based_suspicious_patterns:
+            ai_analysis['explanation'] += f"\n\nAdditional suspicious patterns detected in subject: {', '.join(rule_based_suspicious_patterns)}"
+    
+    return ai_analysis
 
 def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -204,6 +274,57 @@ def analyze_email_with_openai_headers_only(email_data: Dict[str, Any]) -> Dict[s
         # Fallback to rule-based analysis
         return analyze_email_with_rules(email_data)
 
+def batch_hybrid_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Analyze a batch of emails using the hybrid approach (combining rule-based and AI).
+    
+    Args:
+        emails: List of email dictionaries
+    
+    Returns:
+        List of emails with hybrid security analysis added
+    """
+    try:
+        # Check if OpenAI API key is available
+        if not os.environ.get("OPENAI_API_KEY"):
+            logger.warning("OPENAI_API_KEY not found in environment variables")
+            return batch_analyze_emails_with_rules(emails)
+        
+        # Only process a limited number of emails with OpenAI to avoid timeouts
+        max_ai_analysis = 3
+        processed_count = 0
+        analyzed_emails = []
+        
+        for email in emails:
+            try:
+                if processed_count < max_ai_analysis:
+                    # Use hybrid analysis for the first few emails
+                    security_analysis = hybrid_analyze_email(email)
+                    processed_count += 1
+                else:
+                    # Use rule-based for the rest
+                    security_analysis = analyze_email_with_rules(email)
+                
+                email["security_analysis"] = security_analysis
+                analyzed_emails.append(email)
+                
+                # Add a small delay between API calls
+                if processed_count < max_ai_analysis and processed_count < len(emails):
+                    time.sleep(0.2)
+                    
+            except Exception as e:
+                logger.error(f"Error analyzing email: {str(e)}")
+                # Use rule-based analysis as fallback for this email
+                email["security_analysis"] = analyze_email_with_rules(email)
+                analyzed_emails.append(email)
+        
+        return analyzed_emails
+        
+    except Exception as e:
+        logger.error(f"Error in batch email analysis: {str(e)}")
+        # Fallback to rule-based analysis for all emails
+        return batch_analyze_emails_with_rules(emails)
+
 def batch_analyze_emails_with_openai_headers_only(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
     Analyze a batch of emails using OpenAI API with headers-only for privacy.
@@ -259,26 +380,27 @@ def batch_analyze_emails_with_openai_headers_only(emails: List[Dict[str, Any]]) 
 # Public functions to be used by the main application
 def analyze_email_security(email: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Analyze an email for security concerns using OpenAI API with headers-only.
+    Analyze an email for security concerns using hybrid approach combining 
+    rule-based and OpenAI API with headers-only for privacy.
     This is the main function to be called by the application.
     
     Args:
         email: Dictionary containing email data
         
     Returns:
-        Dictionary with security analysis results
+        Dictionary with combined security analysis results
     """
-    return analyze_email_with_openai_headers_only(email)
+    return hybrid_analyze_email(email)
 
 def batch_analyze_emails(emails: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Analyze a batch of emails for security concerns using OpenAI API with headers-only.
+    Analyze a batch of emails for security concerns using hybrid approach.
     This is the main function to be called by the application.
     
     Args:
         emails: List of email dictionaries
         
     Returns:
-        List of emails with security analysis added
+        List of emails with combined security analysis added
     """
-    return batch_analyze_emails_with_openai_headers_only(emails)
+    return batch_hybrid_analyze_emails(emails)
